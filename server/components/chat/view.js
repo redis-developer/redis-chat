@@ -1,10 +1,18 @@
 import markdownit from 'markdown-it';
+
 const md = markdownit({
   html: true,
   linkify: true,
   typographer: true
 });
 
+/**
+ * Formats a message to be rendered in the chat interface.
+ *
+ * @param {Object} params - The parameters for rendering the message.
+ * @param {string} params.message - The message content to render.
+ * @param {boolean} params.isLocal - True if the message is from the local user, false if it's from the bot.
+ */
 export function renderMessage({
   message,
   isLocal

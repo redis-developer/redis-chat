@@ -14,6 +14,11 @@ const llm = {
   embeddings: openai.embedding(config.openai.EMBEDDINGS_MODEL),
 };
 
+/**
+ * Gets a response from the LLM based on the provided prompt.
+ *
+ * @param {string} prompt - The prompt to send to the LLM.
+ */
 export async function generateResponse(prompt) {
   const response = await generateText({
     model: llm.chat,

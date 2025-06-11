@@ -4,10 +4,8 @@ import { engine } from "express-handlebars";
 import { RedisStore } from "connect-redis";
 import session from "express-session";
 import getClient from "./redis.js";
-import { addChatMessage, getChatMessages } from "./components/chat/store.js";
-import { generateResponse } from "./utils/ai.js";
-import { renderMessage } from "./utils/templates.js";
 import config from "./config.js";
+import { initializeChat } from "./components/chat/controller.js";
 
 export async function initialize() {}
 
@@ -49,50 +47,7 @@ wss.on("connection", async (ws, req) => {
     });
   });
 
-  const sessionId = req.session.id;
-  const messages = await getChatMessages(sessionId);
-
-  for (const message of messages) {
-    ws.send(
-      renderMessage({
-        message: message.message,
-        isLocal: message.isLocal,
-      }),
-    );
-  }
-
-  ws.on("error", console.error);
-  ws.on("message", (data) => {
-    const { message } = JSON.parse(data)
-
-    wss.clients.forEach(async (client) => {
-      if (client.readyState === ws.OPEN) {
-        const userMessage = {
-          message,
-          isLocal: true,
-        };
-
-        client.send(
-          renderMessage({
-            message,
-            isLocal: true,
-          }),
-        );
-        await addChatMessage(sessionId, userMessage);
-
-        const response = {
-          message: await generateResponse(message),
-          isLocal: false,
-        };
-
-        await addChatMessage(sessionId, response);
-
-        client.send(
-          renderMessage(response),
-        );
-      }
-    });
-  });
+  initializeChat(ws, req.session.id);
 });
 
 app.get("/", (req, res) => {
