@@ -1,10 +1,21 @@
-import "dotenv/config";
-import app, { initialize } from "./app.js";
+import config from "./config.js";
+import app, { initialize, wss } from "./app.js";
 
-const port = process.env.PORT ?? 8080;
+const port = config.env.PORT;
 
-app.listen(port, async () => {
-  console.log(`Redis JS starter server listening on port ${port}`);
+const server = app.listen(port, async () => {
+  console.log(`Redis chat server listening on port ${port}`);
 
   await initialize();
+});
+
+server.on("upgrade", (request, socket, head) => {
+  const { pathname } = new URL(request.url, 'wss://localhost');
+  if (pathname === "/chat") {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });

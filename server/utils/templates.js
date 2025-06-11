@@ -1,0 +1,29 @@
+import markdownit from 'markdown-it';
+const md = markdownit({
+  html: true,
+  linkify: true,
+  typographer: true
+});
+
+export function renderMessage({
+  message,
+  isLocal
+}) {
+  const markdown = md.render(message);
+  if (isLocal) {
+    return `
+    <div hx-swap-oob="beforeend:#messages">
+      <div class="flex items-start justify-end space-x-2">
+        <div class="bg-blue-500 text-white p-3 rounded-xl max-w-lg">${markdown}</div>
+      </div>
+    </div>
+    `
+  }
+  return `
+  <div hx-swap-oob="beforeend:#messages">
+    <div class="flex items-start space-x-2">
+      <div class="bg-gray-200 p-3 rounded-xl max-w-lg">${markdown}</div>
+    </div>
+  </div>
+  `
+}

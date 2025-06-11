@@ -1,6 +1,7 @@
+import config from "./config.js";
 import { createClient } from "redis";
 
-if (!process.env.REDIS_URL) {
+if (!config.redis.URL) {
   console.error("REDIS_URL not set");
 }
 
@@ -10,13 +11,13 @@ let clients = {};
 /**
  * @param {import("redis").RedisClientOptions} [options]
  *
- * @returns {Promise<ReturnType<typeof createClient>>}
+ * @returns {ReturnType<typeof createClient>}
  */
-export default async function getClient(options) {
+export default function getClient(options) {
   options = Object.assign(
     {},
     {
-      url: process.env.REDIS_URL,
+      url: config.redis.URL,
     },
     options,
   );
