@@ -1,4 +1,4 @@
-This is a [Redis](https://redis.io/) starter template for JS and [Node](https://nodejs.org/) using:
+This is a [Redis](https://redis.io/) LLM chatbot for JS and [Node](https://nodejs.org/) using:
 
 - [Redis Cloud](https://redis.io/try-free/)
 - [Express](https://expressjs.com/)
@@ -19,27 +19,13 @@ cp .env.example .env
 
 Your `.env` file should contain the connection string you copied from Redis Cloud.
 
-Your `.env.docker` file will look similar to `.env`, but should use the appropriate docker internal URLs. Here is
-an example:
-
-```bash
-REDIS_URL="redis://redis:6379"
-```
-
 Next, spin up docker containers:
 
 ```bash
 bun docker
 ```
 
-You should have a server running on `http://localhost:<port>` where the port is set in your `.env` file (default is 8080). You can test the following routes:
-
-1. `GET /api/todos` - Gets all todos
-2. `GET /api/todos/:id` - Gets a todo by ID
-3. `GET /api/todos?[name=<name>]&[status=<status>]` - Search for todos by name and/or status
-4. `POST /api/todos` - Create a todo with `{ "name": "Sample todo" }`
-5. `PATCH /api/todos/:id` - Update todo by ID with `{ "status": "todo|in progress|complete" }`
-6. `DELETE /api/todos/:id` - Delete a todo by ID
+You should have a server running on `http://localhost:<port>` where the port is set in your `.env` file (default is 8080). Go to that URL in your browser and you should see the chat.
 
 ## Running tests
 
