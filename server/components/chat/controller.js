@@ -1,6 +1,25 @@
-import { getChatMessages } from "./store.js";
+import { answerPrompt, shouldCache } from "../../utils/ai.js";
+import { cachePrompt, addChatMessage, createIndexIfNotExists, getChatMessages, vss } from "./store.js";
 import { renderMessage } from "./view.js";
 
+export async function initialize() {
+  await createIndexIfNotExists();
+}
+
+async function checkCache(prompt) {
+  const { total, documents } = await vss(prompt);
+
+  console.log(`Found ${total ?? 0} results in the VSS`);
+  if (total > 0) {
+    const result = documents[0].value;
+    console.log(result);
+    return {
+      response: result.response,
+      inferredPrompt: result.inferredPrompt,
+      cacheJustification: result.cacheJustification,
+    };
+  }
+}
 
 /**
  * Handles incoming messages from the WebSocket client.
@@ -27,10 +46,31 @@ async function handleMessage(ws, sessionId, message) {
   );
   await addChatMessage(sessionId, userMessage);
 
+
   const response = {
-    message: await generateResponse(message),
+    message: "",
     isLocal: false,
   };
+
+  const cacheResult = await checkCache(message);
+
+  if (cacheResult) {
+    response.message = cacheResult.response;
+  }
+
+  if (!response.message) {
+    const result = await answerPrompt(message);
+    response.message = result.text;
+
+    if (result.shouldCacheResult) {
+      await cachePrompt({
+        prompt: message,
+        inferredPrompt: result.inferredPrompt,
+        response: response.message,
+        cacheJustification: result.cacheJustification,
+      });
+    }
+  }
 
   await addChatMessage(sessionId, response);
 

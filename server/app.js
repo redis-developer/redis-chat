@@ -5,9 +5,11 @@ import { RedisStore } from "connect-redis";
 import session from "express-session";
 import getClient from "./redis.js";
 import config from "./config.js";
-import { initializeChat } from "./components/chat/controller.js";
+import * as chat from "./components/chat/controller.js";
 
-export async function initialize() {}
+export async function initialize() {
+  await chat.initialize();
+}
 
 const redisStore = new RedisStore({
   client: getClient(),
@@ -47,7 +49,7 @@ wss.on("connection", async (ws, req) => {
     });
   });
 
-  initializeChat(ws, req.session.id);
+  await chat.initializeChat(ws, req.session.id);
 });
 
 app.get("/", (req, res) => {
