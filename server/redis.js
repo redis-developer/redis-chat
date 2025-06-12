@@ -59,6 +59,6 @@ async function refreshClient(client) {
 
     await client.disconnect();
 
-    await getClient(options);
+    getClient(options);
   }
 }

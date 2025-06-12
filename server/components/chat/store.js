@@ -1,14 +1,9 @@
-import fs from "fs/promises";
 import { SchemaFieldTypes, VectorAlgorithms } from "redis";
 import config from "../../config.js";
 import getClient from "../../redis.js";
 import { embedText } from "../../utils/ai.js";
 import logger from "../../utils/log.js";
-import {
-  float32ToBuffer,
-  getVectorForRedisInsight,
-} from "../../utils/convert.js";
-import { randomBytes } from "../../utils/crypto.js";
+import { float32ToBuffer } from "../../utils/convert.js";
 
 /**
  * An error object
@@ -43,7 +38,7 @@ const CHAT_PREFIX = config.redis.CHAT_PREFIX;
  *
  * @returns {Promise<boolean>}
  */
-async function haveIndex() {
+export async function haveIndex() {
   const redis = getClient();
   const indexes = await redis.ft._list();
 
@@ -210,12 +205,16 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
   const client = getClient(); // Unique ID based on session and timestamp
 
   try {
-    const streamId = await client.xAdd(`chat:${sessionId}`, "*", {
-      id,
-      timestamp: Date.now().toString(), // Store timestamp as string
-      message: message,
-      isLocal: isLocal.toString(),
-    });
+    const streamId = await client.xAdd(
+      `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`,
+      "*",
+      {
+        id,
+        timestamp: Date.now().toString(), // Store timestamp as string
+        message: message,
+        isLocal: isLocal.toString(),
+      },
+    );
     logger.info(`Message added to stream chat:${sessionId}`);
 
     return streamId;
@@ -234,7 +233,7 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
  */
 export async function getChatMessages(sessionId) {
   const client = getClient();
-  const streamKey = `chat:${sessionId}`;
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
   try {
     // '-' means the minimum possible ID, '+' means the maximum possible ID

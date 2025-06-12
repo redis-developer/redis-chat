@@ -20,3 +20,5 @@ server.on("upgrade", (request, socket, head) => {
     socket.destroy();
   }
 });
+
+export default server;

@@ -30,6 +30,8 @@ const config = {
     URL: process.env.REDIS_URL || "redis://localhost:6379",
     SESSION_SECRET:
       process.env.REDIS_SESSION_SECRET || "default_session_secret",
+    SESSION_PREFIX: process.env.REDIS_SESSION_PREFIX || "session:",
+    CHAT_STREAM_PREFIX: process.env.REDIS_CHAT_STREAM_PREFIX || "chat:",
     CHAT_INDEX: process.env.REDIS_CHAT_INDEX || "idx:chat",
     CHAT_PREFIX: process.env.REDIS_CHAT_PREFIX || "qa:",
   },

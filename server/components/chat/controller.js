@@ -36,13 +36,13 @@ async function checkCache(prompt) {
 }
 
 /**
- * Handles incoming messages from the WebSocket client.
+ * Handles incoming messages from the client.
  *
- * @param {WebSocket} ws - The WebSocket connection to the client.
+ * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
  * @param {string} message - The message received from the client.
  */
-async function handleMessage(ws, sessionId, message) {
+export async function handleMessage(send, sessionId, message) {
   const userId = `chat-user-${randomBytes(20)}`;
   const botId = `chat-bot-${randomBytes(20)}`;
   const userMessage = {
@@ -59,18 +59,14 @@ async function handleMessage(ws, sessionId, message) {
   let userResponseSent = false;
   let botResponseSent = false;
   try {
-    if (ws.readyState !== ws.OPEN) {
-      return;
-    }
-
     await addChatMessage(sessionId, userMessage);
 
     logger.debug(`Sending user message: ${userMessage.id}`);
-    ws.send(renderMessage(userMessage));
+    send(renderMessage(userMessage));
     userResponseSent = true;
 
     logger.debug(`Sending initial response: ${response.id}`);
-    ws.send(renderMessage(response));
+    send(renderMessage(response));
     botResponseSent = true;
 
     const cacheResult = await checkCache(message);
@@ -99,7 +95,7 @@ async function handleMessage(ws, sessionId, message) {
     await addChatMessage(sessionId, response);
 
     logger.debug(`Replacing response: ${response.id}`);
-    ws.send(replaceMessage(response));
+    send(replaceMessage(response));
   } catch (error) {
     logger.error("Error handling message:", error.message);
     const message = {
@@ -109,9 +105,9 @@ async function handleMessage(ws, sessionId, message) {
     };
 
     if (botResponseSent) {
-      ws.send(replaceMessage(message));
+      send(replaceMessage(message));
     } else {
-      ws.send(renderMessage(message));
+      send(renderMessage(message));
     }
   }
 }
@@ -119,14 +115,14 @@ async function handleMessage(ws, sessionId, message) {
 /**
  * Initializes the chat by sending all previous messages to the WebSocket client.
  *
- * @param {WebSocket} ws - The WebSocket connection to the client.
+ * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
  */
-export async function initializeChat(ws, sessionId) {
+export async function initializeChat(send, sessionId) {
   const messages = await getChatMessages(sessionId);
 
   for (const message of messages) {
-    ws.send(
+    send(
       renderMessage({
         id: message.id,
         message: message.message,
@@ -134,10 +130,4 @@ export async function initializeChat(ws, sessionId) {
       }),
     );
   }
-
-  ws.on("error", logger.error);
-  ws.on("message", (data) => {
-    const { message } = JSON.parse(data);
-    handleMessage(ws, sessionId, message);
-  });
 }
