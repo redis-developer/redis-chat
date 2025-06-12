@@ -39,7 +39,7 @@ wss.on("connection", async (ws, req) => {
   await new Promise((resolve, reject) => {
     sessionParser(req, {}, () => {
       if (!req.session.id) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         reject();
         return;

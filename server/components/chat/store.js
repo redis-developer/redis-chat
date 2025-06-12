@@ -3,7 +3,10 @@ import { SchemaFieldTypes, VectorAlgorithms } from "redis";
 import config from "../../config.js";
 import getClient from "../../redis.js";
 import { embedText } from "../../utils/ai.js";
-import { float32ToBuffer, getVectorForRedisInsight } from "../../utils/convert.js";
+import {
+  float32ToBuffer,
+  getVectorForRedisInsight,
+} from "../../utils/convert.js";
 import { randomBytes } from "../../utils/crypto.js";
 
 /**
@@ -73,25 +76,25 @@ export async function createIndexIfNotExists() {
         type: SchemaFieldTypes.TEXT,
         NOSTEM: true,
         SORTABLE: true,
-        AS: 'originalPrompt',
+        AS: "originalPrompt",
       },
       "$.inferredPrompt": {
         type: SchemaFieldTypes.TEXT,
         NOSTEM: true,
         SORTABLE: true,
-        AS: 'inferredPrompt',
+        AS: "inferredPrompt",
       },
       "$.cacheJustification": {
         type: SchemaFieldTypes.TEXT,
         NOSTEM: true,
         SORTABLE: true,
-        AS: 'cacheJustification',
+        AS: "cacheJustification",
       },
       "$.response": {
         type: SchemaFieldTypes.TEXT,
         NOSTEM: true,
         SORTABLE: true,
-        AS: 'response',
+        AS: "response",
       },
     },
     {
@@ -109,28 +112,22 @@ export async function createIndexIfNotExists() {
  *
  * @returns {Promise<ChatDocument>} - The cached chat document.
  */
-export async function cachePrompt(id, {
-  originalPrompt,
-  inferredPrompt,
-  cacheJustification,
-  response,
-}) {
+export async function cachePrompt(
+  id,
+  { originalPrompt, inferredPrompt, cacheJustification, response },
+) {
   const redis = getClient();
   const embedding = await embedText(inferredPrompt);
   const fullId = `${CHAT_PREFIX}${id}`;
 
   try {
-    await redis.json.set(
-      fullId,
-      "$",
-      {
-        originalPrompt,
-        embedding,
-        inferredPrompt,
-        cacheJustification,
-        response
-      },
-    );
+    await redis.json.set(fullId, "$", {
+      originalPrompt,
+      embedding,
+      inferredPrompt,
+      cacheJustification,
+      response,
+    });
     console.log(`Prompt cached with key ${fullId}`);
 
     return /** @type {ChatDocument} */ {
@@ -141,8 +138,8 @@ export async function cachePrompt(id, {
         inferredPrompt,
         cacheJustification,
         response,
-      }
-    }
+      },
+    };
   } catch (error) {
     console.error("Error caching prompt:", error);
     throw error;
@@ -157,30 +154,35 @@ export async function cachePrompt(id, {
  * @param {number} [options.count=3] - The number of results to return.
  * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
  */
-export async function vss(prompt, {
-  count = 1,
-  maxDistance = 0.5,
-} = {}) {
+export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
   const redis = getClient();
   const embedding = await embedText(prompt);
 
   try {
     console.log("Searching cache for matching prompt:", prompt);
 
-    const result = /** @type {Chats} */ (await redis.ft.search(
-      CHAT_INDEX,
-      `*=>[KNN ${count} @embedding $BLOB AS distance]`,
-      {
-        PARAMS: {
-          BLOB: float32ToBuffer(embedding),
+    const result = /** @type {Chats} */ (
+      await redis.ft.search(
+        CHAT_INDEX,
+        `*=>[KNN ${count} @embedding $BLOB AS distance]`,
+        {
+          PARAMS: {
+            BLOB: float32ToBuffer(embedding),
+          },
+          RETURN: [
+            "distance",
+            "originalPrompt",
+            "cacheJustification",
+            "inferredPrompt",
+            "response",
+          ],
+          SORTBY: {
+            BY: "distance",
+          },
+          DIALECT: 2,
         },
-        RETURN: ["distance", "originalPrompt", "cacheJustification", "inferredPrompt", "response"],
-        SORTBY: {
-          BY: "distance",
-        },
-        DIALECT: 2,
-      },
-    ));
+      )
+    );
 
     result.documents = result.documents.filter((doc) => {
       return doc.value.distance <= maxDistance;
@@ -204,7 +206,7 @@ export async function vss(prompt, {
  * @param {boolean} params.isLocal - True if the message is from the local user, false if it's from the bot.
  */
 export async function addChatMessage(sessionId, { id, message, isLocal }) {
-  const client = getClient();// Unique ID based on session and timestamp
+  const client = getClient(); // Unique ID based on session and timestamp
 
   try {
     const streamId = await client.xAdd(`chat:${sessionId}`, "*", {

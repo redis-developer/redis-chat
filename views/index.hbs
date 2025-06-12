@@ -1,4 +1,4 @@
-{{!-- <section>
+{{! <section>
     <div id="chat" hx-ext="ws" ws-connect="/chat">
         <div>
             <h2>Redis chat</h2>
@@ -9,7 +9,7 @@
             <button type="submit">Send</button>
         </form>
     </div>
-</section> --}}
+</section> }}
 
 <div class="flex h-screen">
   <!-- Chat Panel -->
@@ -26,8 +26,16 @@
     <!-- Input -->
     <footer hx-ext="ws" ws-connect="/chat" class="bg-white border-t p-4">
       <form ws-send hx-on:submit="this.reset()" class="flex space-x-2">
-        <input type="text" name="message" placeholder="Type a message..." class="flex-1 border rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600">Send</button>
+        <input
+          type="text"
+          name="message"
+          placeholder="Type a message..."
+          class="flex-1 border rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          type="submit"
+          class="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600"
+        >Send</button>
       </form>
     </footer>
   </div>

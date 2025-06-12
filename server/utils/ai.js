@@ -32,13 +32,18 @@ export async function embedText(text) {
 }
 
 const shouldCacheToolSchema = z.object({
-  shouldCacheResult: z.boolean().describe("Whether the prompt result should be cached"),
+  shouldCacheResult: z
+    .boolean()
+    .describe("Whether the prompt result should be cached"),
   inferredPrompt: z.string().describe("The inferred prompt to cache"),
-  cacheJustification: z.string().describe("Justification for caching the result"),
+  cacheJustification: z
+    .string()
+    .describe("Justification for caching the result"),
 });
 
 const shouldCacheTool = {
-  description: "Given a prompt, tell me whether the result should be cached and why. Also provide the inferred prompt to use to cache",
+  description:
+    "Given a prompt, tell me whether the result should be cached and why. Also provide the inferred prompt to use to cache",
   parameters: shouldCacheToolSchema,
 };
 
@@ -51,9 +56,12 @@ export async function shouldCache(prompt) {
   const { toolCalls } = await generateText({
     model: llm.chat,
     messages: [
-      { role: "user", content: `Use the \`shouldCache\` tool to let me know if the following prompt is cachable:
+      {
+        role: "user",
+        content: `Use the \`shouldCache\` tool to let me know if the following prompt is cachable:
 Prompt: ${prompt}
-` },
+`,
+      },
     ],
     tools: {
       shouldCache: shouldCacheTool,
@@ -66,7 +74,9 @@ Prompt: ${prompt}
   }
 
   if (toolCall.toolName !== "shouldCache") {
-    throw new Error(`Expected tool call to be 'shouldCache', but got '${toolCall.name}'`);
+    throw new Error(
+      `Expected tool call to be 'shouldCache', but got '${toolCall.name}'`,
+    );
   }
 
   const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
@@ -87,11 +97,15 @@ export async function answerPrompt(prompt) {
   const { text, toolCalls } = await generateText({
     model: llm.chat,
     messages: [
-      { role: "system", content: "Answer the prompt using markdown. Use `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls." },
+      {
+        role: "system",
+        content:
+          "Answer the prompt using markdown. Use `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
+      },
       { role: "user", content: prompt },
     ],
     tools: {
-      shouldCache: shouldCacheTool
+      shouldCache: shouldCacheTool,
     },
   });
   console.log(`LLM response: ${text}`);
@@ -106,7 +120,7 @@ export async function answerPrompt(prompt) {
       shouldCacheResult: parsed.data.shouldCacheResult,
       inferredPrompt: parsed.data.inferredPrompt,
       cacheJustification: parsed.data.cacheJustification,
-    }
+    };
   }
 
   return {

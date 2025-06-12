@@ -1,6 +1,12 @@
 import { answerPrompt } from "../../utils/ai.js";
 import { randomBytes } from "../../utils/crypto.js";
-import { cachePrompt, addChatMessage, createIndexIfNotExists, getChatMessages, vss } from "./store.js";
+import {
+  cachePrompt,
+  addChatMessage,
+  createIndexIfNotExists,
+  getChatMessages,
+  vss,
+} from "./store.js";
 import { renderMessage, replaceMessage } from "./view.js";
 
 export async function initialize() {
@@ -42,9 +48,7 @@ async function handleMessage(ws, sessionId, message) {
 
     await addChatMessage(sessionId, userMessage);
     console.log(`Sending user message: ${userMessage.id}`);
-    ws.send(
-      renderMessage(userMessage),
-    );
+    ws.send(renderMessage(userMessage));
 
     const response = {
       id: `chat-bot-${randomBytes(20)}`,

@@ -10,7 +10,7 @@ const server = app.listen(port, async () => {
 });
 
 server.on("upgrade", (request, socket, head) => {
-  const { pathname } = new URL(request.url, 'wss://localhost');
+  const { pathname } = new URL(request.url, "wss://localhost");
   if (pathname === "/chat") {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit("connection", ws, request);
