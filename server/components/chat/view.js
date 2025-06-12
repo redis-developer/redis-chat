@@ -6,6 +6,43 @@ const md = markdownit({
   typographer: true
 });
 
+function render({
+  id,
+  message,
+  isLocal
+}) {
+  const markdown = md.render(message);
+  if (isLocal) {
+    return `<div id="${id}" class="flex items-start justify-end space-x-2">
+      <div class="bg-blue-500 text-white p-3 rounded-xl max-w-lg">${markdown}</div>
+    </div>`
+  }
+
+  return `<div id="${id}" class="flex items-start space-x-2">
+    <div class="bg-gray-200 p-3 rounded-xl max-w-lg">${markdown}</div>
+  </div>`
+}
+
+export function replaceMessage({
+  id,
+  message,
+  isLocal
+}) {
+  const markdown = md.render(message);
+  if (!isLocal) {
+    return `
+      <div id="${id}" hx-swap-oob="outerHTML:#${id}" class="flex items-start space-x-2">
+        <div class="bg-gray-200 p-3 rounded-xl max-w-lg">${markdown}</div>
+      </div>
+    `;
+  }
+  return `
+    <div id="${id}" hx-swap-oob="outerHTML:#${id}" class="flex items-start justify-end space-x-2">
+      <div class="bg-blue-500 text-white p-3 rounded-xl max-w-lg">${markdown}</div>
+    </div>
+  `;
+}
+
 /**
  * Formats a message to be rendered in the chat interface.
  *
@@ -14,24 +51,26 @@ const md = markdownit({
  * @param {boolean} params.isLocal - True if the message is from the local user, false if it's from the bot.
  */
 export function renderMessage({
+  id,
   message,
   isLocal
 }) {
   const markdown = md.render(message);
-  if (isLocal) {
+
+  if (!isLocal) {
     return `
     <div hx-swap-oob="beforeend:#messages">
-      <div class="flex items-start justify-end space-x-2">
-        <div class="bg-blue-500 text-white p-3 rounded-xl max-w-lg">${markdown}</div>
+      <div id="${id}" class="flex items-start space-x-2">
+        <div class="bg-gray-200 p-3 rounded-xl max-w-lg">${markdown}</div>
       </div>
     </div>
-    `
+    `;
   }
   return `
   <div hx-swap-oob="beforeend:#messages">
-    <div class="flex items-start space-x-2">
-      <div class="bg-gray-200 p-3 rounded-xl max-w-lg">${markdown}</div>
+    <div id="${id}" class="flex items-start justify-end space-x-2">
+      <div class="bg-blue-500 text-white p-3 rounded-xl max-w-lg">${markdown}</div>
     </div>
   </div>
-  `
+  `;
 }

@@ -83,16 +83,18 @@ Prompt: ${prompt}
  * @param {string} prompt - The prompt to send to the LLM.
  */
 export async function answerPrompt(prompt) {
+  console.log(`Asking the LLM: ${prompt}`);
   const { text, toolCalls } = await generateText({
     model: llm.chat,
     messages: [
-      { role: "system", content: "Answer the prompt using markdown, use the `shouldCache` tool to tell me if the prompt and your response are worth caching." },
+      { role: "system", content: "Answer the prompt using markdown. Use `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls." },
       { role: "user", content: prompt },
     ],
     tools: {
       shouldCache: shouldCacheTool
-    }
+    },
   });
+  console.log(`LLM response: ${text}`);
 
   const toolCall = toolCalls?.[0];
 

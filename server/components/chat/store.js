@@ -6,11 +6,36 @@ import { embedText } from "../../utils/ai.js";
 import { float32ToBuffer, getVectorForRedisInsight } from "../../utils/convert.js";
 import { randomBytes } from "../../utils/crypto.js";
 
+/**
+ * An error object
+ * @typedef {Object} ChatError
+ * @property {number} status
+ * @property {string} message
+ *
+ * A chat object
+ * @typedef {Object} Chat
+ * @property {string} originalPrompt
+ * @property {string} inferredPrompt
+ * @property {string} cacheJustification
+ * @property {string} response
+ * @property {number[]} embedding
+ *
+ * A chat document
+ * @typedef {Object} ChatDocument
+ * @property {string} id
+ * @property {Chat} value
+ *
+ * A chat object
+ * @typedef {Object} Chats
+ * @property {number} total
+ * @property {ChatDocument[]} documents
+ */
+
 const CHAT_INDEX = config.redis.CHAT_INDEX;
 const CHAT_PREFIX = config.redis.CHAT_PREFIX;
 
 /**
- * Checks if the TODOS_INDEX already exists in Redis
+ * Checks if the CHAT_INDEX already exists in Redis
  *
  * @returns {Promise<boolean>}
  */
@@ -44,6 +69,12 @@ export async function createIndexIfNotExists() {
         DISTANCE_METRIC: "L2",
         AS: "embedding",
       },
+      "$.originalPrompt": {
+        type: SchemaFieldTypes.TEXT,
+        NOSTEM: true,
+        SORTABLE: true,
+        AS: 'originalPrompt',
+      },
       "$.inferredPrompt": {
         type: SchemaFieldTypes.TEXT,
         NOSTEM: true,
@@ -73,33 +104,45 @@ export async function createIndexIfNotExists() {
 /**
  * Caches a prompt in Redis with its embedding and metadata.
  *
- * @param {Object} parameters
- * @param {string} prompt - The prompt to cache.
- * @param {string} parameters.inferredPrompt - The prompt to cache.
- * @param {string} parameters.response - The response to cache.
- * @param {string} parameters.cacheJustification - Justification for caching the result.
+ * @param {string} id - The unique identifier for the chat document.
+ * @param {Chat} chat
+ *
+ * @returns {Promise<ChatDocument>} - The cached chat document.
  */
-export async function cachePrompt({
-  prompt,
+export async function cachePrompt(id, {
+  originalPrompt,
   inferredPrompt,
   cacheJustification,
   response,
 }) {
   const redis = getClient();
   const embedding = await embedText(inferredPrompt);
+  const fullId = `${CHAT_PREFIX}${id}`;
 
   try {
     await redis.json.set(
-      `${CHAT_PREFIX}${await randomBytes(20)}`,
+      fullId,
       "$",
       {
+        originalPrompt,
         embedding,
         inferredPrompt,
         cacheJustification,
         response
       },
     );
-    console.log(`Prompt cached with key ${CHAT_PREFIX}${await randomBytes(20)}`);
+    console.log(`Prompt cached with key ${fullId}`);
+
+    return /** @type {ChatDocument} */ {
+      id,
+      value: {
+        originalPrompt,
+        embedding,
+        inferredPrompt,
+        cacheJustification,
+        response,
+      }
+    }
   } catch (error) {
     console.error("Error caching prompt:", error);
     throw error;
@@ -110,28 +153,39 @@ export async function cachePrompt({
  * Searches for similar chat messages based on the provided prompt.
  *
  * @param {string} prompt - The prompt to search for similar chat messages.
+ * @param {Object} options - Options for the search.
+ * @param {number} [options.count=3] - The number of results to return.
+ * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
  */
-export async function vss(prompt) {
+export async function vss(prompt, {
+  count = 1,
+  maxDistance = 0.5,
+} = {}) {
   const redis = getClient();
   const embedding = await embedText(prompt);
 
   try {
     console.log("Searching cache for matching prompt:", prompt);
 
-    const result = await redis.ft.search(
+    const result = /** @type {Chats} */ (await redis.ft.search(
       CHAT_INDEX,
-      "*=>[KNN 3 @embedding $BLOB AS score]",
+      `*=>[KNN ${count} @embedding $BLOB AS distance]`,
       {
         PARAMS: {
           BLOB: float32ToBuffer(embedding),
         },
-        RETURN: ["score", "cacheJustification", "inferredPrompt", "response"],
+        RETURN: ["distance", "originalPrompt", "cacheJustification", "inferredPrompt", "response"],
         SORTBY: {
-          BY: "score",
+          BY: "distance",
         },
         DIALECT: 2,
       },
-    );
+    ));
+
+    result.documents = result.documents.filter((doc) => {
+      return doc.value.distance <= maxDistance;
+    });
+    result.total = result.documents.length;
 
     return result;
   } catch (error) {
@@ -145,19 +199,23 @@ export async function vss(prompt) {
  *
  * @param {string} sessionId - The ID of the chat session.
  * @param {Object} params - The parameters for the chat message.
+ * @param {string} params.id - The unique ID for the chat message.
  * @param {string} params.message - The chat message content.
  * @param {boolean} params.isLocal - True if the message is from the local user, false if it's from the bot.
  */
-export async function addChatMessage(sessionId, { message, isLocal }) {
-  const client = getClient();
+export async function addChatMessage(sessionId, { id, message, isLocal }) {
+  const client = getClient();// Unique ID based on session and timestamp
 
   try {
-    await client.xAdd(`chat:${sessionId}`, "*", {
+    const streamId = await client.xAdd(`chat:${sessionId}`, "*", {
+      id,
       timestamp: Date.now().toString(), // Store timestamp as string
       message: message,
       isLocal: isLocal.toString(),
     });
     console.log(`Message added to stream chat:${sessionId}`);
+
+    return streamId;
   } catch (error) {
     console.error(`Failed to add message to stream chat:${sessionId}:`, error);
     // Depending on requirements, you might want to re-throw or handle the error differently
@@ -180,10 +238,10 @@ export async function getChatMessages(sessionId) {
     const streamEntries = await client.xRange(streamKey, "-", "+");
 
     const messages = streamEntries.map((entry) => {
-      const { timestamp, message, isLocal } = entry.message;
+      const { id, timestamp, message, isLocal } = entry.message;
 
       return {
-        id: entry.id,
+        id,
         timestamp: parseInt(timestamp, 10),
         message: message,
         isLocal: isLocal === "true",

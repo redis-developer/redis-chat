@@ -1,4 +1,4 @@
-name: "redis-starter-js"
+name: "redis-chat"
 services:
   redis:
     container_name: redis
