@@ -7,6 +7,10 @@ export function float32ToBuffer(arr) {
   return float32Buffer;
 }
 
+/**
+ * Converts a float array to a hexadecimal string representation
+ * suitable for Redis Insight.
+ */
 export function getVectorForRedisInsight(arr) {
   // like 2 digit hexadecimal  (for Redis Insight))
   const floatArray = new Float32Array(arr);

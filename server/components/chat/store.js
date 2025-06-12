@@ -3,6 +3,7 @@ import { SchemaFieldTypes, VectorAlgorithms } from "redis";
 import config from "../../config.js";
 import getClient from "../../redis.js";
 import { embedText } from "../../utils/ai.js";
+import logger from "../../utils/log.js";
 import {
   float32ToBuffer,
   getVectorForRedisInsight,
@@ -56,7 +57,7 @@ async function haveIndex() {
  */
 export async function createIndexIfNotExists() {
   if (await haveIndex()) {
-    console.log(`Index ${CHAT_INDEX} already exists.`);
+    logger.info(`Index ${CHAT_INDEX} already exists.`);
     return;
   }
 
@@ -128,7 +129,7 @@ export async function cachePrompt(
       cacheJustification,
       response,
     });
-    console.log(`Prompt cached with key ${fullId}`);
+    logger.info(`Prompt cached with key ${fullId}`);
 
     return /** @type {ChatDocument} */ {
       id,
@@ -141,7 +142,7 @@ export async function cachePrompt(
       },
     };
   } catch (error) {
-    console.error("Error caching prompt:", error);
+    logger.error("Error caching prompt:", error);
     throw error;
   }
 }
@@ -159,7 +160,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
   const embedding = await embedText(prompt);
 
   try {
-    console.log("Searching cache for matching prompt:", prompt);
+    logger.info("Searching cache for matching prompt:", prompt);
 
     const result = /** @type {Chats} */ (
       await redis.ft.search(
@@ -191,7 +192,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
 
     return result;
   } catch (error) {
-    console.error("Error in vss:", error);
+    logger.error("Error in vss:", error);
     throw error;
   }
 }
@@ -215,11 +216,11 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
       message: message,
       isLocal: isLocal.toString(),
     });
-    console.log(`Message added to stream chat:${sessionId}`);
+    logger.info(`Message added to stream chat:${sessionId}`);
 
     return streamId;
   } catch (error) {
-    console.error(`Failed to add message to stream chat:${sessionId}:`, error);
+    logger.error(`Failed to add message to stream chat:${sessionId}:`, error);
     // Depending on requirements, you might want to re-throw or handle the error differently
     throw error;
   }
@@ -250,12 +251,12 @@ export async function getChatMessages(sessionId) {
       };
     });
 
-    console.log(
+    logger.info(
       `Retrieved ${messages.length} messages from stream ${streamKey}`,
     );
     return messages;
   } catch (error) {
-    console.error(
+    logger.error(
       `Failed to retrieve messages from stream ${streamKey}:`,
       error,
     );

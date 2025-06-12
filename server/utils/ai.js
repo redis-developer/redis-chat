@@ -3,6 +3,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, embed } from "ai";
 import config from "../config.js";
+import logger from "./log.js";
 
 const anthropic = createAnthropic({
   apiKey: config.anthropic.API_KEY,
@@ -93,7 +94,7 @@ Prompt: ${prompt}
  * @param {string} prompt - The prompt to send to the LLM.
  */
 export async function answerPrompt(prompt) {
-  console.log(`Asking the LLM: ${prompt}`);
+  logger.info(`Asking the LLM: ${prompt}`);
   const { text, toolCalls } = await generateText({
     model: llm.chat,
     messages: [
@@ -108,7 +109,8 @@ export async function answerPrompt(prompt) {
       shouldCache: shouldCacheTool,
     },
   });
-  console.log(`LLM response: ${text}`);
+  logger.info("Received LLM response");
+  logger.debug(`LLM response: ${text}`);
 
   const toolCall = toolCalls?.[0];
 

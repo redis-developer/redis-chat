@@ -1,10 +1,11 @@
 import config from "./config.js";
 import app, { initialize, wss } from "./app.js";
+import logger from "./utils/log.js";
 
 const port = config.env.PORT;
 
 const server = app.listen(port, async () => {
-  console.log(`Redis chat server listening on port ${port}`);
+  logger.info(`Redis chat server listening on port ${port}`);
 
   await initialize();
 });

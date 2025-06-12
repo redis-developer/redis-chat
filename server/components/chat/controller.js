@@ -1,5 +1,6 @@
 import { answerPrompt } from "../../utils/ai.js";
 import { randomBytes } from "../../utils/crypto.js";
+import logger from "../../utils/log.js";
 import {
   cachePrompt,
   addChatMessage,
@@ -13,10 +14,17 @@ export async function initialize() {
   await createIndexIfNotExists();
 }
 
+/**
+ * Checks the cache for a response to the given prompt.
+ * If a cached response is found, it returns the response along with
+ * the inferred prompt and cache justification.
+ *
+ * @param {string} prompt - The prompt to check in the cache.
+ */
 async function checkCache(prompt) {
   const { total, documents } = await vss(prompt);
 
-  console.log(`Found ${total ?? 0} results in the VSS`);
+  logger.debug(`Found ${total ?? 0} results in the VSS`);
   if (total > 0) {
     const result = documents[0].value;
     return {
@@ -35,28 +43,35 @@ async function checkCache(prompt) {
  * @param {string} message - The message received from the client.
  */
 async function handleMessage(ws, sessionId, message) {
+  const userId = `chat-user-${randomBytes(20)}`;
+  const botId = `chat-bot-${randomBytes(20)}`;
+  const userMessage = {
+    id: userId,
+    message,
+    isLocal: true,
+  };
+
+  const response = {
+    id: botId,
+    message: "...",
+    isLocal: false,
+  };
+  let userResponseSent = false;
+  let botResponseSent = false;
   try {
     if (ws.readyState !== ws.OPEN) {
       return;
     }
 
-    const userMessage = {
-      id: `chat-user-${randomBytes(20)}`,
-      message,
-      isLocal: true,
-    };
-
     await addChatMessage(sessionId, userMessage);
-    console.log(`Sending user message: ${userMessage.id}`);
-    ws.send(renderMessage(userMessage));
 
-    const response = {
-      id: `chat-bot-${randomBytes(20)}`,
-      message: "...",
-      isLocal: false,
-    };
-    console.log(`Sending initial response: ${response.id}`);
+    logger.debug(`Sending user message: ${userMessage.id}`);
+    ws.send(renderMessage(userMessage));
+    userResponseSent = true;
+
+    logger.debug(`Sending initial response: ${response.id}`);
     ws.send(renderMessage(response));
+    botResponseSent = true;
 
     const cacheResult = await checkCache(message);
 
@@ -67,11 +82,11 @@ async function handleMessage(ws, sessionId, message) {
     if (response.message === "...") {
       const result = await answerPrompt(message);
       response.message = result.text;
-      console.log(response.message);
+      logger.debug(response.message);
 
       if (result.shouldCacheResult) {
-        console.log(`Cacheable prompt found: ${message}`);
-        console.log(`Inferred prompt: ${result.inferredPrompt}`);
+        logger.debug(`Cacheable prompt found: ${message}`);
+        logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
         await cachePrompt(response.id, {
           prompt: message,
           inferredPrompt: result.inferredPrompt,
@@ -83,15 +98,21 @@ async function handleMessage(ws, sessionId, message) {
 
     await addChatMessage(sessionId, response);
 
-    console.log(`Replacing response: ${response.id}`);
+    logger.debug(`Replacing response: ${response.id}`);
     ws.send(replaceMessage(response));
   } catch (error) {
-    console.error("Error handling message:", error);
-    ws.send(
-      JSON.stringify({
-        error: "An error occurred while processing your message.",
-      }),
-    );
+    logger.error("Error handling message:", error.message);
+    const message = {
+      id: botId,
+      message: "An error occurred while processing your message.",
+      isLocal: false,
+    };
+
+    if (botResponseSent) {
+      ws.send(replaceMessage(message));
+    } else {
+      ws.send(renderMessage(message));
+    }
   }
 }
 
@@ -114,7 +135,7 @@ export async function initializeChat(ws, sessionId) {
     );
   }
 
-  ws.on("error", console.error);
+  ws.on("error", logger.error);
   ws.on("message", (data) => {
     const { message } = JSON.parse(data);
     handleMessage(ws, sessionId, message);

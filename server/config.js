@@ -2,7 +2,18 @@ import "dotenv/config";
 
 const config = {
   env: {
+    PROD: process.env.NODE_ENV === "production",
     PORT: process.env.PORT || 8080,
+  },
+  log: {
+    LEVEL: process.env.LOG_LEVEL || "info",
+    LOG_STREAM: process.env.LOG_STREAM || "LOG_STREAM",
+    ERROR_STREAM: process.env.ERROR_STREAM || "ERROR_STREAM",
+  },
+  app: {
+    FULL_NAME: process.env.APP_FULL_NAME || "Redis Chat",
+    SERVICE_NAME: process.env.APP_SERVICE_NAME || "redis-chat",
+    VERSION: process.env.APP_VERSION || "1.0.0",
   },
   anthropic: {
     API_KEY: process.env.ANTHROPIC_API_KEY || "",
