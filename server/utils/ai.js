@@ -35,7 +35,9 @@ export async function embedText(text) {
 const shouldCacheToolSchema = z.object({
   shouldCacheResult: z
     .boolean()
-    .describe("Whether the prompt result should be cached"),
+    .describe(
+      "Should this prompt result be cached? Don't cache any result that relies on the chat history.",
+    ),
   inferredPrompt: z.string().describe("The inferred prompt to cache"),
   cacheJustification: z
     .string()
@@ -48,26 +50,28 @@ const shouldCacheToolSchema = z.object({
     ),
 });
 
-const shouldCacheTool = {
+const shouldCacheTool = /** @type {import("ai").Tool} */ ({
   description:
     "Given a prompt, tell me whether the result should be cached and why. Also provide the inferred prompt to use to cache",
   parameters: shouldCacheToolSchema,
-};
+});
 
 /**
  * Gets a response from the LLM based on the provided prompt.
  *
  * @param {string} prompt - The prompt to send to the LLM.
+ * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the prompt.
  */
-export async function answerPrompt(prompt) {
+export async function answerPrompt(prompt, messageHistory = []) {
   logger.info(`Asking the LLM: ${prompt}`);
   const { text, toolCalls } = await generateText({
     model: llm.chat,
     messages: [
+      ...messageHistory,
       {
         role: "system",
         content:
-          "Answer the prompt using markdown. Use `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
+          "Answer the prompt using markdown. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
       },
       { role: "user", content: prompt },
     ],
@@ -78,23 +82,25 @@ export async function answerPrompt(prompt) {
   logger.info("Received LLM response");
   logger.debug(`LLM response: ${text}`);
 
-  const toolCall = toolCalls?.[0];
+  if (toolCalls.length > 0 && toolCalls[0]) {
+    const toolCall = toolCalls[0];
 
-  const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
+    const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
 
-  if (parsed.success) {
-    logger.debug("shouldCache tool called", parsed.data);
-    return {
-      text,
-      shouldCacheResult: parsed.data.shouldCacheResult,
-      inferredPrompt: parsed.data.inferredPrompt,
-      cacheJustification: parsed.data.cacheJustification,
-      recommendedTtl: parsed.data.recommendedTtl,
-    };
+    if (parsed.success) {
+      logger.debug("shouldCache tool called", parsed.data);
+      return {
+        text,
+        shouldCacheResult: parsed.data.shouldCacheResult,
+        inferredPrompt: parsed.data.inferredPrompt,
+        cacheJustification: parsed.data.cacheJustification,
+        recommendedTtl: parsed.data.recommendedTtl,
+      };
+    }
   }
 
   return {
-    text: response,
+    text,
     shouldCacheResult: false,
     inferredPrompt: prompt,
     cacheJustification: "No tool call found or invalid parameters",

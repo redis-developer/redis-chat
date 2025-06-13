@@ -60,7 +60,13 @@ wss.on("connection", (ws, req) => {
       );
     });
 
-    await chat.initializeChat(ws, req.session.id);
+    await chat.initializeChat((response) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(response);
+      } else {
+        logger.warn("WebSocket is not open, cannot send message");
+      }
+    }, req.session.id);
   });
 });
 

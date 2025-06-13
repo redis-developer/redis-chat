@@ -60,14 +60,13 @@ export async function handleMessage(send, sessionId, message) {
     message: "...",
     isLocal: false,
   };
-  let userResponseSent = false;
   let botResponseSent = false;
   try {
+    const messageHistory = await getChatMessages(sessionId);
     await addChatMessage(sessionId, userMessage);
 
     logger.debug(`Sending user message: ${userMessage.id}`);
     send(renderMessage(userMessage));
-    userResponseSent = true;
 
     logger.debug(`Sending initial response: ${response.id}`);
     send(renderMessage(response));
@@ -80,10 +79,14 @@ export async function handleMessage(send, sessionId, message) {
     }
 
     if (response.message === "...") {
-      const result = await answerPrompt(message);
+      const result = await answerPrompt(
+        message,
+        messageHistory.map((message) => ({
+          role: message.isLocal ? "user" : "assistant",
+          content: message.message,
+        })),
+      );
       response.message = result.text;
-      logger.debug(`LLM response: ${response.message}`);
-
       if (result.shouldCacheResult) {
         logger.debug(`Cacheable prompt found: ${message}`);
         logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
