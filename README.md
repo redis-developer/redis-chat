@@ -32,7 +32,7 @@ You should have a server running on `http://localhost:<port>` where the port is 
 There are some tests in the `__tests__` folder that can be run with the following command:
 
 ```bash
-bun test
+bun test --timeout 15000
 ```
 
 These tests setup and teardown on their own. You can modify them if you want to leave data in Redis.
