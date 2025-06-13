@@ -11,7 +11,8 @@
     "dev": "bun run --watch .",
     "format": "prettier . --write",
     "start": "bun .",
-    "docker": "docker compose down && docker compose up -d --build"
+    "docker": "docker compose down && docker compose up -d --build",
+    "setup:redis": "docker compose down && docker compose up -d redis"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",

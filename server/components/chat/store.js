@@ -16,6 +16,7 @@ import { float32ToBuffer } from "../../utils/convert.js";
  * @property {string} originalPrompt
  * @property {string} inferredPrompt
  * @property {string} cacheJustification
+ * @property {number} recommendedTtl
  * @property {string} response
  * @property {number[]} embedding
  *
@@ -70,26 +71,22 @@ export async function createIndexIfNotExists() {
       },
       "$.originalPrompt": {
         type: SchemaFieldTypes.TEXT,
-        NOSTEM: true,
-        SORTABLE: true,
         AS: "originalPrompt",
       },
       "$.inferredPrompt": {
         type: SchemaFieldTypes.TEXT,
-        NOSTEM: true,
-        SORTABLE: true,
         AS: "inferredPrompt",
       },
       "$.cacheJustification": {
         type: SchemaFieldTypes.TEXT,
-        NOSTEM: true,
-        SORTABLE: true,
         AS: "cacheJustification",
+      },
+      "$.recommendedTtl": {
+        type: SchemaFieldTypes.NUMERIC,
+        AS: "recommendedTtl",
       },
       "$.response": {
         type: SchemaFieldTypes.TEXT,
-        NOSTEM: true,
-        SORTABLE: true,
         AS: "response",
       },
     },
@@ -110,7 +107,13 @@ export async function createIndexIfNotExists() {
  */
 export async function cachePrompt(
   id,
-  { originalPrompt, inferredPrompt, cacheJustification, response },
+  {
+    originalPrompt,
+    inferredPrompt,
+    cacheJustification,
+    response,
+    recommendedTtl,
+  },
 ) {
   const redis = getClient();
   const embedding = await embedText(inferredPrompt);
@@ -122,8 +125,14 @@ export async function cachePrompt(
       embedding,
       inferredPrompt,
       cacheJustification,
+      recommendedTtl,
       response,
     });
+
+    if (recommendedTtl > 0) {
+      await redis.expire(fullId, recommendedTtl);
+    }
+
     logger.info(`Prompt cached with key ${fullId}`);
 
     return /** @type {ChatDocument} */ {
@@ -133,6 +142,7 @@ export async function cachePrompt(
         embedding,
         inferredPrompt,
         cacheJustification,
+        recommendedTtl,
         response,
       },
     };
@@ -170,6 +180,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
             "originalPrompt",
             "cacheJustification",
             "inferredPrompt",
+            "recommendedTtl",
             "response",
           ],
           SORTBY: {

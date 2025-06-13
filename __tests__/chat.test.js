@@ -29,7 +29,8 @@ describe("Chats", () => {
   });
 
   afterAll(async () => {
-    await clean();
+    // Comment out to persist data in Redis after tests
+    // await clean();
   });
 
   test("A unique prompt should be answered", async () => {
@@ -41,8 +42,8 @@ describe("Chats", () => {
 
   test("The same prompt twice should be exactly the same response", async () => {
     const send = mock(() => {});
-    await controller.handleMessage(send, "test", "What year is it?");
-    await controller.handleMessage(send, "test", "What year is it?");
+    await controller.handleMessage(send, "test", "Why is the sky blue?");
+    await controller.handleMessage(send, "test", "Why is the sky blue?");
 
     expect(send).toHaveBeenCalledTimes(6);
     expect(send.mock.calls[2][0].message).toBe(send.mock.calls[5][0].message);

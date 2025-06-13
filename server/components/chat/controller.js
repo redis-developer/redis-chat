@@ -20,6 +20,8 @@ export async function initialize() {
  * the inferred prompt and cache justification.
  *
  * @param {string} prompt - The prompt to check in the cache.
+ *
+ * @return {Promise<import("./store.js").Chat>} - An object containing the cached response and metadata,
  */
 async function checkCache(prompt) {
   const { total, documents } = await vss(prompt);
@@ -29,8 +31,10 @@ async function checkCache(prompt) {
     const result = documents[0].value;
     return {
       response: result.response,
+      originalPrompt: result.originalPrompt,
       inferredPrompt: result.inferredPrompt,
       cacheJustification: result.cacheJustification,
+      recommendedTtl: result.recommendedTtl,
     };
   }
 }
@@ -78,16 +82,17 @@ export async function handleMessage(send, sessionId, message) {
     if (response.message === "...") {
       const result = await answerPrompt(message);
       response.message = result.text;
-      logger.debug(response.message);
+      logger.debug(`LLM response: ${response.message}`);
 
       if (result.shouldCacheResult) {
         logger.debug(`Cacheable prompt found: ${message}`);
         logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
         await cachePrompt(response.id, {
-          prompt: message,
+          originalPrompt: message,
           inferredPrompt: result.inferredPrompt,
           response: response.message,
           cacheJustification: result.cacheJustification,
+          recommendedTtl: result.recommendedTtl,
         });
       }
     }

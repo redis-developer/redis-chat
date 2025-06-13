@@ -40,6 +40,12 @@ const shouldCacheToolSchema = z.object({
   cacheJustification: z
     .string()
     .describe("Justification for caching the result"),
+  recommendedTtl: z
+    .number()
+    .default(-1)
+    .describe(
+      "If the prompt result should be cached, what is the recommended time-to-live in seconds for the cached value? Use -1 to cache forever.",
+    ),
 });
 
 const shouldCacheTool = {
@@ -47,46 +53,6 @@ const shouldCacheTool = {
     "Given a prompt, tell me whether the result should be cached and why. Also provide the inferred prompt to use to cache",
   parameters: shouldCacheToolSchema,
 };
-
-/**
- * Determines whether a prompt result should be cached.
- *
- * @param {string} prompt - The prompt to evaluate.
- */
-export async function shouldCache(prompt) {
-  const { toolCalls } = await generateText({
-    model: llm.chat,
-    messages: [
-      {
-        role: "user",
-        content: `Use the \`shouldCache\` tool to let me know if the following prompt is cachable:
-Prompt: ${prompt}
-`,
-      },
-    ],
-    tools: {
-      shouldCache: shouldCacheTool,
-    },
-  });
-
-  const toolCall = toolCalls?.[0];
-  if (!toolCall) {
-    throw new Error("No tool call found in the response");
-  }
-
-  if (toolCall.toolName !== "shouldCache") {
-    throw new Error(
-      `Expected tool call to be 'shouldCache', but got '${toolCall.name}'`,
-    );
-  }
-
-  const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
-  if (!parsed.success) {
-    throw new Error(`Invalid tool call parameters: ${parsed.error.message}`);
-  }
-
-  return parsed.data;
-}
 
 /**
  * Gets a response from the LLM based on the provided prompt.
@@ -117,11 +83,13 @@ export async function answerPrompt(prompt) {
   const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
 
   if (parsed.success) {
+    logger.debug("shouldCache tool called", parsed.data);
     return {
       text,
       shouldCacheResult: parsed.data.shouldCacheResult,
       inferredPrompt: parsed.data.inferredPrompt,
       cacheJustification: parsed.data.cacheJustification,
+      recommendedTtl: parsed.data.recommendedTtl,
     };
   }
 
@@ -130,5 +98,6 @@ export async function answerPrompt(prompt) {
     shouldCacheResult: false,
     inferredPrompt: prompt,
     cacheJustification: "No tool call found or invalid parameters",
+    recommendedTtl: -1,
   };
 }
