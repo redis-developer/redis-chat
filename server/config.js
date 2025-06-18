@@ -34,6 +34,7 @@ const config = {
     CHAT_STREAM_PREFIX: process.env.REDIS_CHAT_STREAM_PREFIX || "chat:",
     CHAT_INDEX: process.env.REDIS_CHAT_INDEX || "idx:chat",
     CHAT_PREFIX: process.env.REDIS_CHAT_PREFIX || "qa:",
+    MESSAGE_PREFIX: process.env.REDIS_MESSAGE_PREFIX || "message:",
   },
 };
 

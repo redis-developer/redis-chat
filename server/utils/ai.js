@@ -71,7 +71,7 @@ export async function answerPrompt(prompt, messageHistory = []) {
       {
         role: "system",
         content:
-          "Answer the prompt using markdown. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
+          "Answer the prompt in HTML text with TailwindCSS classes if necessary. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
       },
       { role: "user", content: prompt },
     ],
@@ -79,6 +79,12 @@ export async function answerPrompt(prompt, messageHistory = []) {
       shouldCache: shouldCacheTool,
     },
   });
+
+  if (!text) {
+    logger.error("LLM response is empty");
+    throw new Error("LLM response is empty");
+  }
+
   logger.info("Received LLM response");
   logger.debug(`LLM response: ${text}`);
 

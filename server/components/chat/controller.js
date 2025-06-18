@@ -7,11 +7,25 @@ import {
   createIndexIfNotExists,
   getChatMessages,
   vss,
+  deleteChatMessages,
+  getPreviousChatMessage,
+  getChatMessage,
+  changeChatMessage,
 } from "./store.js";
 import { renderMessage, replaceMessage } from "./view.js";
 
 export async function initialize() {
   await createIndexIfNotExists();
+}
+
+/**
+ * Clears all messages for a given session.
+ *
+ * @param {string} sessionId - The ID of the chat session to clear messages for.
+ */
+export async function clearMessages(sessionId) {
+  logger.debug(`Clearing messages for session: ${sessionId}`);
+  await deleteChatMessages(sessionId);
 }
 
 /**
@@ -23,7 +37,7 @@ export async function initialize() {
  *
  * @return {Promise<import("./store.js").Chat>} - An object containing the cached response and metadata,
  */
-async function checkCache(prompt) {
+async function findSimilarPrompt(prompt) {
   const { total, documents } = await vss(prompt);
 
   logger.debug(`Found ${total ?? 0} results in the VSS`);
@@ -40,18 +54,53 @@ async function checkCache(prompt) {
 }
 
 /**
+ * Asks the LLM for a response to the given prompt.
+ *
+ * @param {string} sessionId - The ID of the chat session.
+ * @param {string} prompt - The prompt to send to the LLM.
+ * @param {string} cacheId - The ID of the cache entry.
+ */
+export async function askLlm(sessionId, prompt, cacheId) {
+  const messageHistory = await getChatMessages(sessionId);
+  const result = await answerPrompt(
+    prompt,
+    messageHistory.map((message) => ({
+      role: message.isLocal ? "user" : "assistant",
+      content: message.message,
+    })),
+  );
+
+  if (result.shouldCacheResult) {
+    logger.debug(`Cacheable prompt found: ${prompt}`);
+    logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
+    logger.debug(`Response: ${result.text}`);
+    await cachePrompt(cacheId, {
+      originalPrompt: prompt,
+      inferredPrompt: result.inferredPrompt,
+      response: result.text,
+      cacheJustification: result.cacheJustification,
+      recommendedTtl: result.recommendedTtl,
+    });
+  }
+
+  return result.text;
+}
+
+/**
  * Handles incoming messages from the client.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
- * @param {string} message - The message received from the client.
+ * @param {string} prompt - The message received from the client.
+ * @param {boolean} [noCache=false] - If true, skips the cache check and always generates a new response.
  */
-export async function handleMessage(send, sessionId, message) {
-  const userId = `chat-user-${randomBytes(20)}`;
+export async function handleMessage(send, sessionId, prompt, noCache = false) {
+  await createIndexIfNotExists();
+  const userMessageId = `chat-user-${randomBytes(20)}`;
   const botId = `chat-bot-${randomBytes(20)}`;
   const userMessage = {
-    id: userId,
-    message,
+    id: userMessageId,
+    message: prompt,
     isLocal: true,
   };
 
@@ -62,50 +111,51 @@ export async function handleMessage(send, sessionId, message) {
   };
   let botResponseSent = false;
   try {
-    const messageHistory = await getChatMessages(sessionId);
-    await addChatMessage(sessionId, userMessage);
+    const messageId = await addChatMessage(sessionId, userMessage);
 
-    logger.debug(`Sending user message: ${userMessage.id}`);
-    send(renderMessage(userMessage));
+    logger.debug(`Sending user message: ${messageId}`);
+    send(
+      renderMessage({
+        ...userMessage,
+        id: messageId,
+      }),
+    );
 
     logger.debug(`Sending initial response: ${response.id}`);
-    send(renderMessage(response));
+    send(
+      renderMessage({
+        ...response,
+        showRefresh: false,
+      }),
+    );
     botResponseSent = true;
 
-    const cacheResult = await checkCache(message);
+    if (!noCache) {
+      const cacheResult = await findSimilarPrompt(prompt);
 
-    if (cacheResult) {
-      response.message = cacheResult.response;
-    }
-
-    if (response.message === "...") {
-      const result = await answerPrompt(
-        message,
-        messageHistory.map((message) => ({
-          role: message.isLocal ? "user" : "assistant",
-          content: message.message,
-        })),
-      );
-      response.message = result.text;
-      if (result.shouldCacheResult) {
-        logger.debug(`Cacheable prompt found: ${message}`);
-        logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
-        await cachePrompt(response.id, {
-          originalPrompt: message,
-          inferredPrompt: result.inferredPrompt,
-          response: response.message,
-          cacheJustification: result.cacheJustification,
-          recommendedTtl: result.recommendedTtl,
-        });
+      if (cacheResult) {
+        response.message = cacheResult.response;
       }
     }
 
-    await addChatMessage(sessionId, response);
+    if (response.message === "...") {
+      response.message = await askLlm(sessionId, prompt, botId);
+    }
 
-    logger.debug(`Replacing response: ${response.id}`);
-    send(replaceMessage(response));
+    response.id = await addChatMessage(sessionId, response);
+
+    logger.debug(`Replacing ${botId} response with: ${response.id}`);
+    const replacement = replaceMessage({
+      ...response,
+      replaceId: botId,
+    });
+
+    send(replacement);
+
+    return replacement;
   } catch (error) {
     logger.error("Error handling message:", error.message);
+
     const message = {
       id: botId,
       message: "An error occurred while processing your message.",
@@ -113,10 +163,66 @@ export async function handleMessage(send, sessionId, message) {
     };
 
     if (botResponseSent) {
-      send(replaceMessage(message));
+      send(
+        replaceMessage({
+          replaceId: botId,
+          ...message,
+          showRefresh: false,
+        }),
+      );
     } else {
-      send(renderMessage(message));
+      send(
+        renderMessage({
+          ...message,
+          showRefresh: false,
+        }),
+      );
     }
+  }
+}
+
+/**
+ * Regenerates a message in the chat session.
+ *
+ * @param {string} sessionId - The ID of the chat session.
+ * @param {string} entryId - The ID of the message entry to regenerate.
+ */
+export async function regenerateMessage(sessionId, entryId) {
+  logger.debug(`Regenerating message: ${entryId} for session: ${sessionId}`);
+
+  const botId = `chat-bot-${randomBytes(20)}`;
+  const promptMessage = await getPreviousChatMessage(sessionId, entryId);
+  const responseMessage = await getChatMessage(sessionId, entryId);
+
+  if (!promptMessage) {
+    logger.warn(`No previous message found for ID: ${entryId}`);
+    return replaceMessage({
+      replaceId: entryId,
+      id: entryId,
+      message: "No previous message found to regenerate.",
+      isLocal: false,
+    });
+  }
+
+  try {
+    logger.debug(`Replacing response: ${entryId}`);
+    const text = await askLlm(sessionId, promptMessage.message, botId);
+
+    await changeChatMessage(responseMessage.messageKey, text);
+    return replaceMessage({
+      replaceId: entryId,
+      id: entryId,
+      message: text,
+      isLocal: false,
+    });
+  } catch (error) {
+    logger.error("Error regenerating message:", error.message);
+    return replaceMessage({
+      replaceId: entryId,
+      id: entryId,
+      message: "An error occurred while regenerating the message.",
+      isLocal: false,
+    });
   }
 }
 
@@ -132,7 +238,7 @@ export async function initializeChat(send, sessionId) {
   for (const message of messages) {
     send(
       renderMessage({
-        id: message.id,
+        id: message.entryId,
         message: message.message,
         isLocal: message.isLocal,
       }),

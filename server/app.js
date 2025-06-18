@@ -7,6 +7,7 @@ import getClient from "./redis.js";
 import config from "./config.js";
 import logger from "./utils/log.js";
 import * as chat from "./components/chat/controller.js";
+import chatRouter from "./components/chat/router.js";
 
 export async function initialize() {
   await chat.initialize();
@@ -70,6 +71,7 @@ wss.on("connection", (ws, req) => {
   });
 });
 
+app.use("/chat", chatRouter);
 app.get("/", (_, res) => {
   res.render("index");
 });

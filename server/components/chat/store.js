@@ -216,13 +216,14 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
   const client = getClient(); // Unique ID based on session and timestamp
 
   try {
+    const messageKey = `${config.redis.MESSAGE_PREFIX}${sessionId}:${id}`;
+    await client.set(messageKey, message);
     const streamId = await client.xAdd(
       `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`,
       "*",
       {
-        id,
         timestamp: Date.now().toString(), // Store timestamp as string
-        message: message,
+        messageKey: messageKey,
         isLocal: isLocal.toString(),
       },
     );
@@ -232,6 +233,93 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
   } catch (error) {
     logger.error(`Failed to add message to stream chat:${sessionId}:`, error);
     // Depending on requirements, you might want to re-throw or handle the error differently
+    throw error;
+  }
+}
+
+/**
+ * Retrieves the message before a specified message ID in a chat session.
+ *
+ * @param {string} sessionId - The ID of the chat session.
+ * @param {string} entryId - The stream entry ID of the message to find the previous message for.
+ */
+export async function getPreviousChatMessage(sessionId, entryId) {
+  const client = getClient();
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+
+  try {
+    // Get the message before the specified message ID
+    const entries = await client.xRevRange(streamKey, entryId, "-", {
+      COUNT: 2,
+    });
+
+    if (entries.length === 0) {
+      return null; // No message found before the specified ID
+    }
+
+    const entry = entries[1];
+    const { id, timestamp, messageKey, isLocal } = entry.message;
+
+    return {
+      id,
+      timestamp: parseInt(timestamp, 10),
+      message: await client.get(messageKey),
+      messageKey,
+      isLocal: isLocal === "true",
+    };
+  } catch (error) {
+    logger.error(
+      `Failed to retrieve message before ${entryId} from stream ${streamKey}`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Changes the content of a specific chat message in the Redis stream.
+ *
+ * @param {string} id - The unique ID of the chat message to change.
+ * @param {string} newValue - The new content for the chat message.
+ */
+export async function changeChatMessage(id, newValue) {
+  const client = getClient();
+
+  await client.set(id, newValue);
+}
+
+/**
+ * Retrieves a specific chat message by its entry ID from the Redis stream.
+ *
+ * @param {string} sessionId - The ID of the chat session.
+ * @param {string} entryId - The stream entry ID of the message to retrieve.
+ */
+export async function getChatMessage(sessionId, entryId) {
+  const client = getClient();
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+
+  try {
+    // Get the specific message by entry ID
+    const entries = await client.xRange(streamKey, entryId, entryId);
+
+    if (entries.length === 0) {
+      return null; // No message found for the specified entry ID
+    }
+
+    const entry = entries[0];
+    const { id, timestamp, messageKey, isLocal } = entry.message;
+    return {
+      id,
+      timestamp: parseInt(timestamp, 10),
+      message: await client.get(messageKey),
+      messageKey,
+      isLocal: isLocal === "true",
+    };
+  } catch (error) {
+    logger.error(
+      `Failed to retrieve message ${entryId} from stream ${streamKey}`,
+      error,
+    );
     throw error;
   }
 }
@@ -250,16 +338,19 @@ export async function getChatMessages(sessionId) {
     // '-' means the minimum possible ID, '+' means the maximum possible ID
     const streamEntries = await client.xRange(streamKey, "-", "+");
 
-    const messages = streamEntries.map((entry) => {
-      const { id, timestamp, message, isLocal } = entry.message;
+    const messages = await Promise.all(
+      streamEntries.map(async (entry) => {
+        const { id, timestamp, messageKey, isLocal } = entry.message;
 
-      return {
-        id,
-        timestamp: parseInt(timestamp, 10),
-        message: message,
-        isLocal: isLocal === "true",
-      };
-    });
+        return {
+          entryId: entry.id,
+          id,
+          timestamp: parseInt(timestamp, 10),
+          message: await client.get(messageKey),
+          isLocal: isLocal === "true",
+        };
+      }),
+    );
 
     logger.info(
       `Retrieved ${messages.length} messages from stream ${streamKey}`,
@@ -270,6 +361,24 @@ export async function getChatMessages(sessionId) {
       `Failed to retrieve messages from stream ${streamKey}:`,
       error,
     );
+    throw error;
+  }
+}
+
+/**
+ * Deletes all chat messages from the Redis stream for a given session.
+ *
+ * @param {string} sessionId - The ID of the chat session.
+ */
+export async function deleteChatMessages(sessionId) {
+  const client = getClient();
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+
+  try {
+    await client.del(streamKey);
+    logger.info(`Deleted all messages from stream ${streamKey}`);
+  } catch (error) {
+    logger.error(`Failed to delete messages from stream ${streamKey}:`, error);
     throw error;
   }
 }
