@@ -67,17 +67,18 @@ export async function answerPrompt(prompt, messageHistory = []) {
   const { text, toolCalls } = await generateText({
     model: llm.chat,
     messages: [
-      ...messageHistory,
       {
         role: "system",
         content:
-          "Answer the prompt in HTML text with TailwindCSS classes if necessary. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
+          "Answer the latest user prompt to the best of your ability. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
       },
+      ...messageHistory,
       { role: "user", content: prompt },
     ],
     tools: {
       shouldCache: shouldCacheTool,
     },
+    maxSteps: 2,
   });
 
   if (!text) {

@@ -22,13 +22,20 @@ export function replaceMessage({
           <div>${message}</div>
           ${
             showRefresh
-              ? `<button
-            hx-get="/chat/regenerate/${id}"
-            hx-target="#entry-${id}"
-            hx-disabled-elt="this"
-            class="bg-gray-500 self-end h-10 text-white px-4 py-2 rounded-xl hover:bg-gray-600">
-            ⟳
-            </button>`
+              ? `<form
+                ws-send
+                hx-on:submit="this.reset()"
+                class="flex space-x-2"
+                hx-disabled-elt="this"
+              >
+                <input type="hidden" name="id" value="${id}">
+                <input type="hidden" name="cmd" value="regenerate">
+                <button
+                  hx-disabled-elt="this"
+                  class="bg-gray-500 self-end h-10 text-white px-4 py-2 rounded-xl hover:bg-gray-600">
+                  ⟳
+                </button>
+            </form>`
               : ""
           }
         </div>
@@ -60,13 +67,20 @@ export function renderMessage({ id, message, isLocal, showRefresh = true }) {
         <div>${message}</div>
         ${
           showRefresh
-            ? `<button
-          hx-get="/chat/regenerate/${id}"
-          hx-target="#entry-${id}"
-          hx-disabled-elt="this"
-          class="bg-gray-500 self-end h-10 text-white px-4 py-2 rounded-xl hover:bg-gray-600">
-          ⟳
-          </button>`
+            ? `<form
+              ws-send
+              hx-on:submit="this.reset()"
+              class="flex space-x-2"
+              hx-disabled-elt="this"
+            >
+              <input type="hidden" name="id" value="${id}">
+              <input type="hidden" name="cmd" value="regenerate">
+              <button
+                hx-disabled-elt="this"
+                class="bg-gray-500 self-end h-10 text-white px-4 py-2 rounded-xl hover:bg-gray-600">
+                ⟳
+              </button>
+            </form>`
             : ""
         }
         </div>

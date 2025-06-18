@@ -7,7 +7,6 @@ import getClient from "./redis.js";
 import config from "./config.js";
 import logger from "./utils/log.js";
 import * as chat from "./components/chat/controller.js";
-import chatRouter from "./components/chat/router.js";
 
 export async function initialize() {
   await chat.initialize();
@@ -46,19 +45,22 @@ wss.on("connection", (ws, req) => {
     }
 
     ws.on("error", logger.error);
-    ws.on("message", (data) => {
-      const { message } = JSON.parse(data);
-      chat.handleMessage(
-        (response) => {
-          if (ws.readyState === ws.OPEN) {
-            ws.send(response);
-          } else {
-            logger.warn("WebSocket is not open, cannot send message");
-          }
-        },
-        req.session.id,
-        message,
-      );
+    ws.on("message", async (data) => {
+      const send = (response) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(response);
+        } else {
+          logger.warn("WebSocket is not open, cannot send message");
+        }
+      };
+      const { cmd, id, message } = JSON.parse(data);
+      if (cmd === "prompt") {
+        await chat.handleMessage(send, req.session.id, message);
+      } else if (cmd === "regenerate") {
+        await chat.regenerateMessage(send, req.session.id, id);
+      } else if (cmd === "clear") {
+        await chat.clearMessages(send, req.session.id);
+      }
     });
 
     await chat.initializeChat((response) => {
@@ -71,7 +73,6 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-app.use("/chat", chatRouter);
 app.get("/", (_, res) => {
   res.render("index");
 });

@@ -12,7 +12,11 @@ import {
   getChatMessage,
   changeChatMessage,
 } from "./store.js";
-import { renderMessage, replaceMessage } from "./view.js";
+import {
+  renderMessage,
+  replaceMessage,
+  clearMessages as clearMessagesView,
+} from "./view.js";
 
 export async function initialize() {
   await createIndexIfNotExists();
@@ -21,11 +25,13 @@ export async function initialize() {
 /**
  * Clears all messages for a given session.
  *
+ * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session to clear messages for.
  */
-export async function clearMessages(sessionId) {
+export async function clearMessages(send, sessionId) {
   logger.debug(`Clearing messages for session: ${sessionId}`);
   await deleteChatMessages(sessionId);
+  send(clearMessagesView());
 }
 
 /**
@@ -154,7 +160,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 
     return replacement;
   } catch (error) {
-    logger.error("Error handling message:", error.message);
+    logger.error(`Error handling message:`, error);
 
     const message = {
       id: botId,
@@ -184,10 +190,11 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 /**
  * Regenerates a message in the chat session.
  *
+ * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
  * @param {string} entryId - The ID of the message entry to regenerate.
  */
-export async function regenerateMessage(sessionId, entryId) {
+export async function regenerateMessage(send, sessionId, entryId) {
   logger.debug(`Regenerating message: ${entryId} for session: ${sessionId}`);
 
   const botId = `chat-bot-${randomBytes(20)}`;
@@ -196,33 +203,51 @@ export async function regenerateMessage(sessionId, entryId) {
 
   if (!promptMessage) {
     logger.warn(`No previous message found for ID: ${entryId}`);
-    return replaceMessage({
+    const response = replaceMessage({
       replaceId: entryId,
       id: entryId,
       message: "No previous message found to regenerate.",
       isLocal: false,
     });
+    send(response);
+    return response;
   }
 
   try {
     logger.debug(`Replacing response: ${entryId}`);
+
+    send(
+      replaceMessage({
+        replaceId: entryId,
+        id: entryId,
+        message: "...",
+        isLocal: false,
+        showRefresh: false,
+      }),
+    );
+
     const text = await askLlm(sessionId, promptMessage.message, botId);
 
     await changeChatMessage(responseMessage.messageKey, text);
-    return replaceMessage({
+    const response = replaceMessage({
       replaceId: entryId,
       id: entryId,
       message: text,
       isLocal: false,
     });
+    send(response);
+
+    return response;
   } catch (error) {
-    logger.error("Error regenerating message:", error.message);
-    return replaceMessage({
+    logger.error("Error regenerating message:", error);
+    const response = replaceMessage({
       replaceId: entryId,
       id: entryId,
       message: "An error occurred while regenerating the message.",
       isLocal: false,
     });
+    send(response);
+    return response;
   }
 }
 
