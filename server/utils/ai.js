@@ -32,11 +32,12 @@ export async function embedText(text) {
   return embedding;
 }
 
-const shouldCacheToolSchema = z.object({
-  shouldCacheResult: z
+const promptResponseSchema = z.object({
+  response: z.string().describe("The response to the prompt"),
+  canCacheResponse: z
     .boolean()
     .describe(
-      "Should this prompt result be cached? Don't cache any result that relies on the chat history.",
+      "Is there an inferred prompt with which to cache the response? If so, return true. Otherwise, return false.",
     ),
   inferredPrompt: z.string().describe("The inferred prompt to cache"),
   cacheJustification: z
@@ -50,10 +51,21 @@ const shouldCacheToolSchema = z.object({
     ),
 });
 
-const shouldCacheTool = /** @type {import("ai").Tool} */ ({
-  description:
-    "Given a prompt, tell me whether the result should be cached and why. Also provide the inferred prompt to use to cache",
-  parameters: shouldCacheToolSchema,
+/**
+ * @typedef {Object} CanCacheToolResponse
+ * @property {string} response - The response to the prompt.
+ * @property {boolean} canCacheResponse - Whether the response is cacheable.
+ * @property {string} inferredPrompt - The inferred prompt that can be used to cache the response.
+ * @property {string} cacheJustification - Justification for caching the response.
+ * @property {number} recommendedTtl - Recommended time-to-live for the cached response in seconds.
+ */
+
+const promptResponseTool = /** @type {import("ai").Tool} */ ({
+  description: `Given a prompt, answer the prompt and also tell me whether there is an inferred prompt with which to cache the answer. If you can infer a prompt that will answer the question without needing the chat history then it is cacheable. Otherwise do not cache it. For example,
+    1. "What's the weather like in Paris?" is cacheable because it can be answered with a simple prompt like "Get the weather in Paris".
+    2. "What did I say about the project yesterday?" is not cacheable because it requires context from the chat history.
+    3. "When was Prince William born?" is cacheable and a follow up of "When was Harry born?" is also cacheable because it can be inferred to mean "When was Prince Harry born." and doesn't require chat history to answer the inferred question.`,
+  parameters: promptResponseSchema,
 });
 
 /**
@@ -61,56 +73,51 @@ const shouldCacheTool = /** @type {import("ai").Tool} */ ({
  *
  * @param {string} prompt - The prompt to send to the LLM.
  * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the prompt.
+ *
+ * @returns {Promise<CanCacheToolResponse & { text: string; }}
  */
 export async function answerPrompt(prompt, messageHistory = []) {
   logger.info(`Asking the LLM: ${prompt}`);
-  const { text, toolCalls } = await generateText({
+  let toolResponse = /** @type {CanCacheToolResponse} */ ({
+    canCacheResponse: false,
+    inferredPrompt: prompt,
+    cacheJustification: "No tool call found or invalid parameters",
+    recommendedTtl: -1,
+  });
+  const { toolCalls } = await generateText({
     model: llm.chat,
     messages: [
       {
         role: "system",
         content:
-          "Answer the latest user prompt to the best of your ability. Always use the `shouldCache` tool to inform whether the response and prompt is cacheable. Respond with only the answer to the user's prompt, nothing related to tool calls.",
+          "Answer the latest user prompt to the best of your ability. Always call the `promptResponseTool` with your response to the prompt and the information about whether it is cacheable.",
       },
       ...messageHistory,
       { role: "user", content: prompt },
     ],
     tools: {
-      shouldCache: shouldCacheTool,
+      promptResponseTool,
     },
-    maxSteps: 2,
+    toolChoice: "required",
   });
 
-  if (!text) {
-    logger.error("LLM response is empty");
-    throw new Error("LLM response is empty");
-  }
-
   logger.info("Received LLM response");
-  logger.debug(`LLM response: ${text}`);
 
   if (toolCalls.length > 0 && toolCalls[0]) {
     const toolCall = toolCalls[0];
 
-    const parsed = shouldCacheToolSchema.safeParse(toolCall.args);
+    const parsed = promptResponseSchema.safeParse(toolCall.args);
 
     if (parsed.success) {
-      logger.debug("shouldCache tool called", parsed.data);
-      return {
-        text,
-        shouldCacheResult: parsed.data.shouldCacheResult,
-        inferredPrompt: parsed.data.inferredPrompt,
-        cacheJustification: parsed.data.cacheJustification,
-        recommendedTtl: parsed.data.recommendedTtl,
-      };
+      logger.debug("canCache tool called", parsed.data);
+      toolResponse = parsed.data;
     }
   }
 
-  return {
-    text,
-    shouldCacheResult: false,
-    inferredPrompt: prompt,
-    cacheJustification: "No tool call found or invalid parameters",
-    recommendedTtl: -1,
-  };
+  if (!(toolResponse && toolResponse.response)) {
+    logger.error("LLM response is empty");
+    throw new Error("LLM response is empty");
+  }
+
+  return toolResponse;
 }

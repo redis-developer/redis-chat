@@ -76,20 +76,20 @@ export async function askLlm(sessionId, prompt, cacheId) {
     })),
   );
 
-  if (result.shouldCacheResult) {
+  if (result.canCacheResponse) {
     logger.debug(`Cacheable prompt found: ${prompt}`);
     logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
-    logger.debug(`Response: ${result.text}`);
+    logger.debug(`Response: ${result.response}`);
     await cachePrompt(cacheId, {
       originalPrompt: prompt,
       inferredPrompt: result.inferredPrompt,
-      response: result.text,
+      response: result.response,
       cacheJustification: result.cacheJustification,
       recommendedTtl: result.recommendedTtl,
     });
   }
 
-  return result.text;
+  return result.response;
 }
 
 /**
