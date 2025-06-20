@@ -25,6 +25,8 @@ Next, spin up docker containers:
 bun docker
 ```
 
+> **NOTE:** If you only want to run Redis in docker and then run the app in dev mode, use `bun docker:redis` instead.
+
 You should have a server running on `http://localhost:<port>` where the port is set in your `.env` file (default is 8080). Go to that URL in your browser and you should see the chat.
 
 ## Running tests
@@ -43,7 +45,9 @@ To run the development server outside of docker:
 
 ```bash
 bun install
-# then
+# then, only if you want to run Redis in docker
+bun docker:redis
+# finally
 bun dev
 ```
 
@@ -59,6 +63,12 @@ Updating dependencies:
 
 ```bash
 bun update
+```
+
+This is a no-build JavaScript project, but you can still run type checking:
+
+```bash
+bun ts
 ```
 
 ## Connecting to Redis Cloud

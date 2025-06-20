@@ -11,7 +11,7 @@ import {
   getPreviousChatMessage,
   getChatMessage,
   changeChatMessage,
-  flush,
+  deleteKeys,
 } from "./store";
 import * as view from "./view";
 
@@ -34,7 +34,7 @@ export async function clearMessages(send, sessionId) {
  */
 export async function clearCache(send) {
   logger.debug("Flushing Redis");
-  await flush();
+  await deleteKeys();
   send(view.clearMessages());
 }
 

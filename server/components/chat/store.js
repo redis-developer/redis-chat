@@ -395,10 +395,24 @@ export async function deleteChatMessages(sessionId) {
 /**
  * Flushes all data in Redis.
  */
-export async function flush() {
-  const client = getClient();
+export async function deleteKeys() {
   try {
-    const keys = await client.flushDb();
+    const client = getClient();
+
+    const exists = await haveIndex();
+    if (exists) {
+      await client.ft.dropIndex(config.redis.CHAT_INDEX);
+    }
+
+    await client.del([
+      ...(await client.keys(`${config.redis.CHAT_PREFIX}*`)),
+      ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
+      ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
+      ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),
+      config.log.ERROR_STREAM,
+      config.log.LOG_STREAM,
+    ]);
+
     await createIndexIfNotExists();
   } catch (error) {
     logger.error("Failed to clear cache:", error);

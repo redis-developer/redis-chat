@@ -37,6 +37,11 @@ export default function getClient(options) {
   client
     .on("error", (err) => {
       console.error("Redis Client Error", err);
+
+      try {
+        client.destroy();
+      } catch (err) {}
+
       void refreshClient(client);
     })
     .connect();
@@ -56,8 +61,6 @@ async function refreshClient(client) {
     if (options?.url) {
       delete clients[options?.url];
     }
-
-    await client.disconnect();
 
     getClient(options);
   }
