@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+.htmx-request {
+  opacity: 0.5;
+}

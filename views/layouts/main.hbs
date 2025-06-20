@@ -4,17 +4,11 @@
     <meta charset="utf-8" />
     <title>Redis RAG</title>
     <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
-    <script src="https://unpkg.com/htmx.org/dist/htmx.js"></script>
-    <script src="https://unpkg.com/htmx.org/dist/ext/ws.js"></script>
-    {{!-- <script src="https://cdn.tailwindcss.com"></script> --}}
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.min.js" integrity="sha384-t4DxZSyQK+0Uv4jzy5B0QyHyWQD2GFURUmxKMBVww9+e2EJ0ei/vCvv7+79z0fkr" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="/styles.css" />
-    <style>
-      .htmx-request {
-        opacity: 0.5;
-      }
-    </style>
     {{#if isDev}}
-    <script src="/scripts.js"></script>
+    <script src="/dev.js"></script>
     {{/if}}
   </head>
   <body class="h-screen bg-gray-500" hx-boost="true">

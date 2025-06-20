@@ -36,6 +36,8 @@ function onConnection(ws, req) {
 
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
+      console.log(data);
+      console.log(data.toString());
       const { cmd, id, message } = JSON.parse(data.toString());
 
       if (cmd === "prompt") {
