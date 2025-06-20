@@ -54,7 +54,7 @@ export async function haveIndex() {
  */
 export async function createIndexIfNotExists() {
   if (await haveIndex()) {
-    logger.info(`Index ${CHAT_INDEX} already exists.`);
+    logger.debug(`Index ${CHAT_INDEX} already exists.`);
     return;
   }
 
@@ -134,7 +134,7 @@ export async function cachePrompt(
       await redis.expire(fullId, recommendedTtl);
     }
 
-    logger.info(`Prompt cached with key ${fullId}`);
+    logger.info(`Prompt cached with key \`${fullId}\``);
 
     return /** @type {ChatDocument} */ {
       id,
@@ -166,7 +166,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
   const embedding = await embedText(prompt);
 
   try {
-    logger.info("Searching cache for matching prompt:", prompt);
+    logger.info(`Searching cache for matching prompt: ${prompt}`);
 
     const result = /** @type {Chats} */ (
       await redis.ft.search(
@@ -228,11 +228,16 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
         isLocal: isLocal.toString(),
       },
     );
-    logger.info(`Message added to stream chat:${sessionId}`);
+    logger.info(
+      `${isLocal ? "User" : "Bot"} message added to stream \`${config.redis.CHAT_STREAM_PREFIX}${sessionId}\``,
+    );
 
     return streamId;
   } catch (error) {
-    logger.error(`Failed to add message to stream chat:${sessionId}:`, error);
+    logger.error(
+      `Failed to add message to stream \`${config.redis.CHAT_STREAM_PREFIX}${sessionId}\`:`,
+      error,
+    );
     // Depending on requirements, you might want to re-throw or handle the error differently
     throw error;
   }
@@ -318,7 +323,7 @@ export async function getChatMessage(sessionId, entryId) {
     };
   } catch (error) {
     logger.error(
-      `Failed to retrieve message ${entryId} from stream ${streamKey}`,
+      `Failed to retrieve message ${entryId} from stream \`${streamKey}\``,
       error,
     );
     throw error;
@@ -355,12 +360,12 @@ export async function getChatMessages(sessionId) {
     );
 
     logger.info(
-      `Retrieved ${messages.length} messages from stream ${streamKey}`,
+      `Retrieved ${messages.length} messages from stream \`${streamKey}\``,
     );
     return messages;
   } catch (error) {
     logger.error(
-      `Failed to retrieve messages from stream ${streamKey}:`,
+      `Failed to retrieve messages from stream \`${streamKey}\`:`,
       error,
     );
     throw error;

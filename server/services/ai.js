@@ -101,15 +101,13 @@ export async function answerPrompt(prompt, messageHistory = []) {
     toolChoice: "required",
   });
 
-  logger.info("Received LLM response");
-
   if (toolCalls.length > 0 && toolCalls[0]) {
     const toolCall = toolCalls[0];
 
     const parsed = promptResponseSchema.safeParse(toolCall.args);
 
     if (parsed.success) {
-      logger.debug("canCache tool called", parsed.data);
+      logger.info("`canCache` tool called with data:", parsed.data);
       toolResponse = parsed.data;
     }
   }

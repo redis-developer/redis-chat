@@ -22,7 +22,7 @@ import * as view from "./view";
  * @param {string} sessionId - The ID of the chat session to clear messages for.
  */
 export async function clearMessages(send, sessionId) {
-  logger.debug(`Clearing messages for session: ${sessionId}`);
+  logger.info(`Clearing messages for session \`${sessionId}\``);
   await deleteChatMessages(sessionId);
   send(view.clearMessages());
 }
@@ -33,7 +33,7 @@ export async function clearMessages(send, sessionId) {
  * @param {(message: string) => void} send - Method to send responses to the client.
  */
 export async function clearCache(send) {
-  logger.debug("Flushing Redis");
+  logger.info("Clearing Redis");
   await deleteKeys();
   send(view.clearMessages());
 }
@@ -50,7 +50,7 @@ export async function clearCache(send) {
 async function findSimilarPrompt(prompt) {
   const { total, documents } = await vss(prompt);
 
-  logger.debug(`Found ${total ?? 0} result(s) in the semantic cache`);
+  logger.info(`Found ${total ?? 0} result(s) in the semantic cache`);
   if (total > 0) {
     const result = documents[0].value;
 
@@ -83,9 +83,9 @@ export async function askLlm(sessionId, prompt, cacheId) {
   );
 
   if (result.canCacheResponse) {
-    logger.debug(`Cacheable prompt found: ${prompt}`);
-    logger.debug(`Inferred prompt: ${result.inferredPrompt}`);
-    logger.debug(`Response: ${result.response}`);
+    logger.info(`Cacheable prompt found: ${prompt}`);
+    logger.info(`Inferred prompt: ${result.inferredPrompt}`);
+    logger.info(`LLM response: ${result.response}`);
     await cachePrompt(cacheId, {
       originalPrompt: prompt,
       inferredPrompt: result.inferredPrompt,
@@ -201,7 +201,9 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
  * @param {string} entryId - The ID of the message entry to regenerate.
  */
 export async function regenerateMessage(send, sessionId, entryId) {
-  logger.debug(`Regenerating message: ${entryId} for session: ${sessionId}`);
+  logger.info(
+    `Regenerating message \`${entryId}\` for session \`${sessionId}\``,
+  );
 
   const botId = `chat-bot-${randomBytes(20)}`;
   const promptMessage = await getPreviousChatMessage(sessionId, entryId);
