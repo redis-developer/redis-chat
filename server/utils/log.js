@@ -1,24 +1,17 @@
-import config from "../config.js";
-import getClient from "../redis.js";
+import config from "../config";
+import getClient from "../redis";
 import { LEVEL, SPLAT, MESSAGE } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
-
-/**
- * @typedef {Object} TransportInfo
- * @property {string} [LEVEL] - The log level, used internally by winston.
- * @property {string} [MESSAGE] - The log message, used internally by winston.
- * @property {[any]} [SPLAT] - Additional metadata or arguments passed to the log.
- */
 
 class RedisTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
    *
-   * @param {TransportInfo} info
+   * @param {any} info
    * @param {function} [callback] - Optional callback function to call after logging.
    */
-  log(info, callback) {
+  log(info, callback = () => {}) {
     try {
       const level = info[LEVEL];
       let message = info[MESSAGE];

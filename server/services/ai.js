@@ -2,8 +2,8 @@ import { z } from "zod";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, embed } from "ai";
-import config from "../config.js";
-import logger from "./log.js";
+import config from "../config";
+import logger from "../utils/log";
 
 const anthropic = createAnthropic({
   apiKey: config.anthropic.API_KEY,
@@ -74,7 +74,7 @@ const promptResponseTool = /** @type {import("ai").Tool} */ ({
  * @param {string} prompt - The prompt to send to the LLM.
  * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the prompt.
  *
- * @returns {Promise<CanCacheToolResponse & { text: string; }}
+ * @returns {Promise<CanCacheToolResponse>}
  */
 export async function answerPrompt(prompt, messageHistory = []) {
   logger.info(`Asking the LLM: ${prompt}`);

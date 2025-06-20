@@ -23,8 +23,10 @@ const config = {
     API_KEY: process.env.OPENAI_API_KEY || "",
     EMBEDDINGS_MODEL:
       process.env.OPENAI_EMBEDDINGS_MODEL || "text-embedding-3-small",
-    EMBEDDINGS_DIMENSIONS:
-      parseInt(process.env.OPENAI_EMBEDDINGS_DIMENSIONS, 10) || 1536,
+    EMBEDDINGS_DIMENSIONS: parseInt(
+      process.env.OPENAI_EMBEDDINGS_DIMENSIONS ?? "1536",
+      10,
+    ),
   },
   redis: {
     URL: process.env.REDIS_URL || "redis://localhost:6379",

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, test, mock, expect } from "bun:test";
-import config from "../server/config.js";
-import * as controller from "../server/components/chat/controller.js";
-import * as store from "../server/components/chat/store.js";
-import getClient from "../server/redis.js";
+import config from "../server/config";
+import * as controller from "../server/components/chat/controller";
+import * as store from "../server/components/chat/store";
+import getClient from "../server/redis";
 
 async function clean() {
   const redis = getClient();

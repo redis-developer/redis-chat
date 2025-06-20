@@ -1,9 +1,9 @@
-import { SchemaFieldTypes, VectorAlgorithms } from "redis";
-import config from "../../config.js";
-import getClient from "../../redis.js";
-import { embedText } from "../../utils/ai.js";
-import logger from "../../utils/log.js";
-import { float32ToBuffer } from "../../utils/convert.js";
+import { SCHEMA_FIELD_TYPE, SCHEMA_VECTOR_FIELD_ALGORITHM } from "redis";
+import config from "../../config";
+import getClient from "../../redis";
+import { embedText } from "../../services/ai";
+import logger from "../../utils/log";
+import { float32ToBuffer } from "../../utils/convert";
 
 /**
  * An error object
@@ -13,6 +13,7 @@ import { float32ToBuffer } from "../../utils/convert.js";
  *
  * A chat object
  * @typedef {Object} Chat
+ * @property {number} [distance]
  * @property {string} originalPrompt
  * @property {string} inferredPrompt
  * @property {string} cacheJustification
@@ -62,31 +63,31 @@ export async function createIndexIfNotExists() {
     CHAT_INDEX,
     {
       "$.embedding": {
-        type: SchemaFieldTypes.VECTOR,
+        type: SCHEMA_FIELD_TYPE.VECTOR,
         TYPE: "FLOAT32",
-        ALGORITHM: VectorAlgorithms.FLAT,
+        ALGORITHM: SCHEMA_VECTOR_FIELD_ALGORITHM.FLAT,
         DIM: config.openai.EMBEDDINGS_DIMENSIONS,
         DISTANCE_METRIC: "L2",
         AS: "embedding",
       },
       "$.originalPrompt": {
-        type: SchemaFieldTypes.TEXT,
+        type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "originalPrompt",
       },
       "$.inferredPrompt": {
-        type: SchemaFieldTypes.TEXT,
+        type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "inferredPrompt",
       },
       "$.cacheJustification": {
-        type: SchemaFieldTypes.TEXT,
+        type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "cacheJustification",
       },
       "$.recommendedTtl": {
-        type: SchemaFieldTypes.NUMERIC,
+        type: SCHEMA_FIELD_TYPE.NUMERIC,
         AS: "recommendedTtl",
       },
       "$.response": {
-        type: SchemaFieldTypes.TEXT,
+        type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "response",
       },
     },
@@ -101,7 +102,7 @@ export async function createIndexIfNotExists() {
  * Caches a prompt in Redis with its embedding and metadata.
  *
  * @param {string} id - The unique identifier for the chat document.
- * @param {Chat} chat
+ * @param {Omit<Chat, "embedding">} chat
  *
  * @returns {Promise<ChatDocument>} - The cached chat document.
  */
@@ -184,7 +185,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
             "response",
           ],
           SORTBY: {
-            BY: "distance",
+            BY: /** @type {`${'@' | '$.'}${string}`} */ ("distance"),
           },
           DIALECT: 2,
         },
@@ -192,7 +193,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
     );
 
     result.documents = result.documents.filter((doc) => {
-      return doc.value.distance <= maxDistance;
+      return (doc.value.distance ?? maxDistance + 1) <= maxDistance;
     });
     result.total = result.documents.length;
 
@@ -263,7 +264,7 @@ export async function getPreviousChatMessage(sessionId, entryId) {
     return {
       id,
       timestamp: parseInt(timestamp, 10),
-      message: await client.get(messageKey),
+      message: (await client.get(messageKey)) ?? "",
       messageKey,
       isLocal: isLocal === "true",
     };
@@ -328,7 +329,7 @@ export async function getChatMessage(sessionId, entryId) {
  * Retrieves all chat messages from the Redis stream for a given session.
  *
  * @param {string} sessionId - The ID of the chat session.
- * @returns {Promise<Array<{ id: string, timestamp: number, message: string, isLocal: boolean }>>} - A promise resolving to an array of chat messages.
+ * @returns {Promise<Array<{ entryId: string; id: string; timestamp: number; message: string; messageKey: string; isLocal: boolean }>>} - A promise resolving to an array of chat messages.
  */
 export async function getChatMessages(sessionId) {
   const client = getClient();
@@ -346,7 +347,8 @@ export async function getChatMessages(sessionId) {
           entryId: entry.id,
           id,
           timestamp: parseInt(timestamp, 10),
-          message: await client.get(messageKey),
+          message: (await client.get(messageKey)) ?? "",
+          messageKey,
           isLocal: isLocal === "true",
         };
       }),
@@ -375,10 +377,31 @@ export async function deleteChatMessages(sessionId) {
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
   try {
-    await client.del(streamKey);
+    const messages = await getChatMessages(sessionId);
+    await client.del(
+      [streamKey].concat(
+        messages.map((message) => {
+          return message.messageKey;
+        }),
+      ),
+    );
     logger.info(`Deleted all messages from stream ${streamKey}`);
   } catch (error) {
     logger.error(`Failed to delete messages from stream ${streamKey}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Flushes all data in Redis.
+ */
+export async function flush() {
+  const client = getClient();
+  try {
+    const keys = await client.flushDb();
+    await createIndexIfNotExists();
+  } catch (error) {
+    logger.error("Failed to clear cache:", error);
     throw error;
   }
 }

@@ -1,6 +1,6 @@
-import { answerPrompt } from "../../utils/ai.js";
-import { randomBytes } from "../../utils/crypto.js";
-import logger from "../../utils/log.js";
+import { answerPrompt } from "../../services/ai";
+import { randomBytes } from "../../utils/crypto";
+import logger from "../../utils/log";
 import {
   cachePrompt,
   addChatMessage,
@@ -11,16 +11,9 @@ import {
   getPreviousChatMessage,
   getChatMessage,
   changeChatMessage,
-} from "./store.js";
-import {
-  renderMessage,
-  replaceMessage,
-  clearMessages as clearMessagesView,
-} from "./view.js";
-
-export async function initialize() {
-  await createIndexIfNotExists();
-}
+  flush,
+} from "./store";
+import * as view from "./view";
 
 /**
  * Clears all messages for a given session.
@@ -31,7 +24,18 @@ export async function initialize() {
 export async function clearMessages(send, sessionId) {
   logger.debug(`Clearing messages for session: ${sessionId}`);
   await deleteChatMessages(sessionId);
-  send(clearMessagesView());
+  send(view.clearMessages());
+}
+
+/**
+ * Clears the entire cache.
+ *
+ * @param {(message: string) => void} send - Method to send responses to the client.
+ */
+export async function clearCache(send) {
+  logger.debug("Flushing Redis");
+  await flush();
+  send(view.clearMessages());
 }
 
 /**
@@ -41,7 +45,7 @@ export async function clearMessages(send, sessionId) {
  *
  * @param {string} prompt - The prompt to check in the cache.
  *
- * @return {Promise<import("./store.js").Chat>} - An object containing the cached response and metadata,
+ * @return {Promise<import("./store").Chat | undefined>} - An object containing the cached response and metadata,
  */
 async function findSimilarPrompt(prompt) {
   const { total, documents } = await vss(prompt);
@@ -49,8 +53,10 @@ async function findSimilarPrompt(prompt) {
   logger.debug(`Found ${total ?? 0} results in the VSS`);
   if (total > 0) {
     const result = documents[0].value;
+
     return {
       response: result.response,
+      embedding: result.embedding,
       originalPrompt: result.originalPrompt,
       inferredPrompt: result.inferredPrompt,
       cacheJustification: result.cacheJustification,
@@ -121,7 +127,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 
     logger.debug(`Sending user message: ${messageId}`);
     send(
-      renderMessage({
+      view.renderMessage({
         ...userMessage,
         id: messageId,
       }),
@@ -129,7 +135,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 
     logger.debug(`Sending initial response: ${response.id}`);
     send(
-      renderMessage({
+      view.renderMessage({
         ...response,
         showRefresh: false,
       }),
@@ -151,7 +157,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
     response.id = await addChatMessage(sessionId, response);
 
     logger.debug(`Replacing ${botId} response with: ${response.id}`);
-    const replacement = replaceMessage({
+    const replacement = view.renderMessage({
       ...response,
       replaceId: botId,
     });
@@ -170,7 +176,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 
     if (botResponseSent) {
       send(
-        replaceMessage({
+        view.renderMessage({
           replaceId: botId,
           ...message,
           showRefresh: false,
@@ -178,7 +184,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
       );
     } else {
       send(
-        renderMessage({
+        view.renderMessage({
           ...message,
           showRefresh: false,
         }),
@@ -201,9 +207,9 @@ export async function regenerateMessage(send, sessionId, entryId) {
   const promptMessage = await getPreviousChatMessage(sessionId, entryId);
   const responseMessage = await getChatMessage(sessionId, entryId);
 
-  if (!promptMessage) {
+  if (!(promptMessage && responseMessage)) {
     logger.warn(`No previous message found for ID: ${entryId}`);
-    const response = replaceMessage({
+    const response = view.renderMessage({
       replaceId: entryId,
       id: entryId,
       message: "No previous message found to regenerate.",
@@ -217,7 +223,7 @@ export async function regenerateMessage(send, sessionId, entryId) {
     logger.debug(`Replacing response: ${entryId}`);
 
     send(
-      replaceMessage({
+      view.renderMessage({
         replaceId: entryId,
         id: entryId,
         message: "...",
@@ -229,7 +235,7 @@ export async function regenerateMessage(send, sessionId, entryId) {
     const text = await askLlm(sessionId, promptMessage.message, botId);
 
     await changeChatMessage(responseMessage.messageKey, text);
-    const response = replaceMessage({
+    const response = view.renderMessage({
       replaceId: entryId,
       id: entryId,
       message: text,
@@ -240,7 +246,7 @@ export async function regenerateMessage(send, sessionId, entryId) {
     return response;
   } catch (error) {
     logger.error("Error regenerating message:", error);
-    const response = replaceMessage({
+    const response = view.renderMessage({
       replaceId: entryId,
       id: entryId,
       message: "An error occurred while regenerating the message.",
@@ -262,7 +268,7 @@ export async function initializeChat(send, sessionId) {
 
   for (const message of messages) {
     send(
-      renderMessage({
+      view.renderMessage({
         id: message.entryId,
         message: message.message,
         isLocal: message.isLocal,
