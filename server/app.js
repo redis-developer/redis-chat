@@ -4,7 +4,7 @@ import config from "./config";
 import session from "./utils/session";
 
 const app = express();
-app.use(session);
+app.use(express.static("public"));
 app.engine(
   "hbs",
   engine({
@@ -13,6 +13,7 @@ app.engine(
 );
 app.set("view engine", "hbs");
 app.set("views", "./views");
+app.use(session);
 
 app.get("/", (_, res) => {
   res.render("index", {
