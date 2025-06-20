@@ -1,6 +1,7 @@
+import { WebSocketServer } from "ws";
 import config from "./config";
 import app from "./app";
-import logger from "./utils/log";
+import logger, { logWss } from "./utils/log";
 import * as chat from "./components/chat";
 
 const port = config.env.PORT;
@@ -17,10 +18,19 @@ const server = app.listen(port, async () => {
  * @param {Buffer} head - The first packet of the WebSocket connection.
  */
 function onUpgrade(req, socket, head) {
-  const { pathname } = new URL(req.url, "wss://localhost");
-  if (pathname === "/chat") {
+  let url = req.url;
+
+  if (url.includes("wss://")) {
+    url = new URL(url).pathname;
+  }
+
+  if (url === "/chat") {
     chat.socket.wss.handleUpgrade(req, socket, head, (ws) => {
       chat.socket.wss.emit("connection", ws, req);
+    });
+  } else if (url === "/log") {
+    logWss.handleUpgrade(req, socket, head, (ws) => {
+      logWss.emit("connection", ws, req);
     });
   } else {
     socket.destroy();
