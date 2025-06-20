@@ -50,7 +50,7 @@ export async function clearCache(send) {
 async function findSimilarPrompt(prompt) {
   const { total, documents } = await vss(prompt);
 
-  logger.debug(`Found ${total ?? 0} results in the VSS`);
+  logger.debug(`Found ${total ?? 0} result(s) in the semantic cache`);
   if (total > 0) {
     const result = documents[0].value;
 

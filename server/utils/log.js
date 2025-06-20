@@ -1,22 +1,28 @@
 import { WebSocketServer } from "ws";
 import config from "../config";
 import getClient from "../redis";
-import { LEVEL, SPLAT, MESSAGE } from "triple-beam";
+import { LEVEL, SPLAT } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
+
+/**
+ * @typedef {Object} TransportInfo
+ * @property {string} level - The log level (e.g., "info", "error").
+ * @property {string} message - The log message.
+ */
 
 class RedisTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
    *
-   * @param {any} info
+   * @param {TransportInfo & { [SPLAT]?: string[] }} info
    * @param {function} [callback] - Optional callback function to call after logging.
    */
   log(info, callback = () => {}) {
     try {
-      const level = info[LEVEL];
-      let message = info[MESSAGE];
-      let meta = info[SPLAT][0] ?? {};
+      const level = info.level;
+      let message = info.message;
+      let meta = info[SPLAT]?.[0] ?? "{}";
 
       if (typeof message !== "string") {
         message = JSON.stringify(message);
@@ -56,14 +62,14 @@ class WebsocketTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
    *
-   * @param {any} info
+   * @param {TransportInfo & { [SPLAT]?: unknown[] }} info
    * @param {function} [callback] - Optional callback function to call after logging.
    */
   log(info, callback = () => {}) {
     try {
-      const level = info[LEVEL];
-      let message = info[MESSAGE];
-      let meta = info[SPLAT][0] ?? {};
+      const level = info.level;
+      let message = info.message;
+      let meta = info[SPLAT]?.[0];
 
       for (const subscriber of this.subscribers) {
         try {
@@ -76,7 +82,9 @@ class WebsocketTransport extends Transport {
           // Ignore errors in sending to subscribers
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.log(e);
+    }
 
     callback();
   }
