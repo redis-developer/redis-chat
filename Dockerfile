@@ -26,13 +26,14 @@ COPY . .
 FROM base AS prerelease
 COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
-ENV NODE_ENV=production
-RUN bun css && bun build --target=bun . --outdir build/
+RUN bun deploy:css && bun deploy:build
 
 # copy production dependencies and source code into final image
 FROM base AS release
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/build/server/index.js .
+COPY --from=prerelease /usr/src/app/public public
+COPY --from=prerelease /usr/src/app/views views
 COPY --from=prerelease /usr/src/app/package.json .
 
 # run the app

@@ -14,19 +14,12 @@ services:
 
   server:
     container_name: server
-    build:
-      context: ./
-      dockerfile: ./Dockerfile
-      target: dev
-    command: bun dev
+    build: .
     ports:
       - 8080:8080
     env_file:
       - ./.env
       - ./.env.docker
-    volumes:
-      - ./server:/usr/src/app/server
-      - /usr/src/app/node_modules
     restart: unless-stopped
     depends_on:
       - redis

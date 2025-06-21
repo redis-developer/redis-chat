@@ -8,8 +8,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css",
-    "dev": "bun css && bun run --watch .",
+    "deploy:css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css",
+    "deploy:build": "bun build --target=bun . --outdir build/",
+    "dev": "bun run --bun concurrently npm:dev:*",
+    "dev:server": "bun run --watch .",
+    "dev:css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css --watch",
     "docker": "docker compose down && docker compose up -d --build",
     "docker:redis": "docker compose down && docker compose up -d redis",
     "format": "prettier . --write",
@@ -34,6 +37,7 @@
   },
   "devDependencies": {
     "@types/express-session": "^1.18.2",
+    "concurrently": "^9.1.2",
     "nodemon": "^3.1.10",
     "prettier": "^3.5.3",
     "supertest": "^7.1.1",
