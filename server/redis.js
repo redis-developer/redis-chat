@@ -7,6 +7,12 @@ if (!config.redis.URL) {
 
 /** @type {Record<string, ReturnType<typeof createClient>>} */
 let clients = {};
+let maxRetries = 5;
+
+/** @type {Record<string, number>} */
+let retries = {};
+/** @type {Record<string, boolean>} */
+let connectionsRefused = {};
 
 /**
  * @param {import("redis").RedisClientOptions} [options]
@@ -32,23 +38,56 @@ export default function getClient(options) {
     return client;
   }
 
-  client = createClient(options);
+  try {
+    client = createClient(options);
 
-  client
-    .on("error", (err) => {
-      console.error("Redis Client Error", err);
+    client
+      .on("error", (err) => {
+        const url = options.url ?? "";
 
-      try {
-        client.destroy();
-      } catch (err) {}
+        if (/ECONNREFUSED/.test(err.message)) {
+          if (!connectionsRefused[url]) {
+            connectionsRefused[url] = true;
 
-      void refreshClient(client);
-    })
-    .connect();
+            console.error("Redis Client Error", {
+              error: err,
+              noStream: true,
+            });
+          }
+          return;
+        }
 
-  clients[options.url] = client;
+        console.error("Redis Client Error", {
+          error: err,
+          noStream: true,
+        });
 
-  return client;
+        try {
+          client.destroy();
+        } catch (err) {}
+
+        const clientRetries = retries[url] ?? 0;
+
+        if (clientRetries < maxRetries) {
+          retries[url] = clientRetries + 1;
+          try {
+            void refreshClient(client);
+          } catch (e) {}
+        }
+      })
+      .connect();
+
+    clients[options.url] = client;
+
+    return client;
+  } catch (err) {
+    console.error("Error creating Redis client:", {
+      error: err,
+      noStream: true,
+    });
+
+    throw err;
+  }
 }
 
 /**

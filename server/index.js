@@ -7,7 +7,9 @@ import * as chat from "./components/chat";
 const port = config.env.PORT;
 
 const server = app.listen(port, async () => {
-  logger.info(`Redis chat server listening on port ${port}`);
+  logger.info(`Redis chat server listening on port ${port}`, {
+    noStream: true,
+  });
 });
 
 /**
@@ -40,11 +42,17 @@ function onUpgrade(req, socket, head) {
 server.on("upgrade", onUpgrade);
 
 process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception:", err);
+  logger.error("Uncaught Exception:", {
+    error: err,
+    noStream: true,
+  });
 });
 
-process.on("unhandledRejection", (reason, promise) => {
-  logger.error("Unhandled Rejection:", reason);
+process.on("unhandledRejection", (err, promise) => {
+  logger.error("Unhandled Rejection:", {
+    error: err,
+    noStream: true,
+  });
 });
 
 export default server;

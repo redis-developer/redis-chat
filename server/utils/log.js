@@ -15,22 +15,25 @@ class RedisTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
    *
-   * @param {TransportInfo & { [SPLAT]?: string[] }} info
+   * @param {TransportInfo & { [SPLAT]?: unknown[] }} info
    * @param {function} [callback] - Optional callback function to call after logging.
    */
   log(info, callback = () => {}) {
     try {
       const level = info.level;
       let message = info.message;
-      let meta = info[SPLAT]?.[0] ?? "{}";
+      let meta = /** @type {unknown} */ (info[SPLAT]?.[0] ?? "{}");
 
       if (typeof message !== "string") {
         message = JSON.stringify(message);
       }
 
-      if (typeof meta !== "string") {
-        meta = JSON.stringify(meta);
+      if (/** @type {any} */ (meta)?.noStream) {
+        callback();
+        return;
       }
+
+      let metaStr = typeof meta === "string" ? meta : JSON.stringify(meta);
 
       const redis = getClient();
       // Don't await this so the app can keep moving.
@@ -38,7 +41,7 @@ class RedisTransport extends Transport {
         service: config.app.FULL_NAME,
         level,
         message,
-        meta,
+        meta: metaStr,
       });
 
       if (level.toLowerCase() === "error") {
@@ -46,7 +49,7 @@ class RedisTransport extends Transport {
           service: config.app.SERVICE_NAME,
           level,
           message,
-          meta,
+          meta: metaStr,
         });
       }
     } catch (e) {}
