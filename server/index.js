@@ -42,17 +42,11 @@ function onUpgrade(req, socket, head) {
 server.on("upgrade", onUpgrade);
 
 process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception:", {
-    error: err,
-    noStream: true,
-  });
+  console.error(err);
 });
 
 process.on("unhandledRejection", (err, promise) => {
-  logger.error("Unhandled Rejection:", {
-    error: err,
-    noStream: true,
-  });
+  console.error(err);
 });
 
 export default server;

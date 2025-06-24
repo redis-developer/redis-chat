@@ -3,7 +3,6 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, embed } from "ai";
 import config from "../config";
-import logger from "../utils/log";
 
 const anthropic = createAnthropic({
   apiKey: config.anthropic.API_KEY,
@@ -77,7 +76,6 @@ const promptResponseTool = /** @type {import("ai").Tool} */ ({
  * @returns {Promise<CanCacheToolResponse>}
  */
 export async function answerPrompt(prompt, messageHistory = []) {
-  logger.info(`Asking the LLM: ${prompt}`);
   let toolResponse = /** @type {CanCacheToolResponse} */ ({
     canCacheResponse: false,
     inferredPrompt: prompt,
@@ -107,13 +105,11 @@ export async function answerPrompt(prompt, messageHistory = []) {
     const parsed = promptResponseSchema.safeParse(toolCall.args);
 
     if (parsed.success) {
-      logger.info("`canCache` tool called with data:", parsed.data);
       toolResponse = parsed.data;
     }
   }
 
   if (!(toolResponse && toolResponse.response)) {
-    logger.error("LLM response is empty");
     throw new Error("LLM response is empty");
   }
 

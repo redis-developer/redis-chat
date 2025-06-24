@@ -4,6 +4,7 @@ import getClient from "../redis";
 import { LEVEL, SPLAT } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
+import session from "./session";
 
 /**
  * @typedef {Object} TransportInfo
@@ -59,8 +60,8 @@ class RedisTransport extends Transport {
 }
 
 class WebsocketTransport extends Transport {
-  /** @type {((ev: { level: string; message: string; meta?: unknown }) => unknown)[]} */
-  subscribers = [];
+  /** @type {Record<string, ((ev: { level: string; message: string; meta?: unknown }) => unknown)[]>} */
+  subscribers = {};
 
   /**
    * Logs messages to a Redis stream.
@@ -74,7 +75,22 @@ class WebsocketTransport extends Transport {
       let message = info.message;
       let meta = info[SPLAT]?.[0];
 
-      for (const subscriber of this.subscribers) {
+      if (!(/** @type {any} */ (meta)?.sessionId)) {
+        callback();
+        return;
+      }
+
+      const sessionId = /** @type {string} */ (
+        /** @type {any} */ (meta).sessionId
+      );
+      delete (/** @type {any} */ (meta).sessionId);
+      const subscribers = this.subscribers[sessionId] || [];
+
+      if (Object.keys(meta).length === 0) {
+        meta = undefined;
+      }
+
+      for (const subscriber of subscribers) {
         try {
           subscriber({
             level,
@@ -95,16 +111,22 @@ class WebsocketTransport extends Transport {
   /**
    * Subscribes to log messages.
    *
+   * @param {string} sessionId - The session ID for which to subscribe.
    * @param {(ev: { level: string; message: string; meta?: unknown }) => unknown} subscriber
    *
    * @returns {() => void} - A function to unsubscribe the subscriber.
    */
-  subscribe(subscriber) {
+  subscribe(sessionId, subscriber) {
     if (typeof subscriber !== "function") {
       throw new Error("Subscriber must be a function");
     }
 
-    let subscribers = this.subscribers;
+    let subscribers = this.subscribers[sessionId] ?? [];
+
+    if (subscribers.length === 0) {
+      this.subscribers[sessionId] = subscribers;
+    }
+
     subscribers.push(subscriber);
 
     return () => {
@@ -125,26 +147,33 @@ class WebsocketTransport extends Transport {
    * @param {import("express").Request} req - The HTTP request object.
    */
   onConnection(ws, req) {
-    /**
-     * Sends a response to the WebSocket client.
-     *
-     * @param {{ level: string; message: string; meta?: unknown }} response - The response message to send.
-     */
-    const send = (response) => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify(response));
-      } else {
-        unsubscribe();
+    session(req, /** @type {any} */ ({}), async () => {
+      const sessionId = req.session.id;
+
+      if (!sessionId) {
+        return;
       }
-    };
+      /**
+       * Sends a response to the WebSocket client.
+       *
+       * @param {{ level: string; message: string; meta?: unknown }} response - The response message to send.
+       */
+      const send = (response) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify(response));
+        } else {
+          unsubscribe();
+        }
+      };
 
-    const unsubscribe = this.subscribe(send);
-    ws.on("error", unsubscribe);
-    ws.on("close", unsubscribe);
+      const unsubscribe = this.subscribe(sessionId, send);
+      ws.on("error", unsubscribe);
+      ws.on("close", unsubscribe);
 
-    send({
-      level: "info",
-      message: "WebSocket connection established",
+      send({
+        level: "info",
+        message: "WebSocket connection established",
+      });
     });
   }
 }

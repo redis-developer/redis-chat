@@ -15,9 +15,10 @@ app.set("view engine", "hbs");
 app.set("views", "./views");
 app.use(session);
 
-app.get("/", (_, res) => {
+app.get("/", (req, res) => {
   res.render("index", {
     isDev: config.env.DEV,
+    sessionId: req.session.id,
   });
 });
 

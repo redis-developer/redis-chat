@@ -2,7 +2,6 @@ import { SCHEMA_FIELD_TYPE, SCHEMA_VECTOR_FIELD_ALGORITHM } from "redis";
 import config from "../../config";
 import getClient from "../../redis";
 import { embedText } from "../../services/ai";
-import logger from "../../utils/log";
 import { float32ToBuffer } from "../../utils/convert";
 
 /**
@@ -54,7 +53,6 @@ export async function haveIndex() {
  */
 export async function createIndexIfNotExists() {
   if (await haveIndex()) {
-    logger.debug(`Index ${CHAT_INDEX} already exists.`);
     return;
   }
 
@@ -120,37 +118,30 @@ export async function cachePrompt(
   const embedding = await embedText(inferredPrompt);
   const fullId = `${CHAT_PREFIX}${id}`;
 
-  try {
-    await redis.json.set(fullId, "$", {
+  await redis.json.set(fullId, "$", {
+    originalPrompt,
+    embedding,
+    inferredPrompt,
+    cacheJustification,
+    recommendedTtl,
+    response,
+  });
+
+  if (recommendedTtl > 0) {
+    await redis.expire(fullId, recommendedTtl);
+  }
+
+  return /** @type {ChatDocument} */ {
+    id,
+    value: {
       originalPrompt,
       embedding,
       inferredPrompt,
       cacheJustification,
       recommendedTtl,
       response,
-    });
-
-    if (recommendedTtl > 0) {
-      await redis.expire(fullId, recommendedTtl);
-    }
-
-    logger.info(`Prompt cached with key \`${fullId}\``);
-
-    return /** @type {ChatDocument} */ {
-      id,
-      value: {
-        originalPrompt,
-        embedding,
-        inferredPrompt,
-        cacheJustification,
-        recommendedTtl,
-        response,
-      },
-    };
-  } catch (error) {
-    logger.error("Error caching prompt:", error);
-    throw error;
-  }
+    },
+  };
 }
 
 /**
@@ -165,43 +156,36 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
   const redis = getClient();
   const embedding = await embedText(prompt);
 
-  try {
-    logger.info(`Searching cache for matching prompt: ${prompt}`);
-
-    const result = /** @type {Chats} */ (
-      await redis.ft.search(
-        CHAT_INDEX,
-        `*=>[KNN ${count} @embedding $BLOB AS distance]`,
-        {
-          PARAMS: {
-            BLOB: float32ToBuffer(embedding),
-          },
-          RETURN: [
-            "distance",
-            "originalPrompt",
-            "cacheJustification",
-            "inferredPrompt",
-            "recommendedTtl",
-            "response",
-          ],
-          SORTBY: {
-            BY: /** @type {`${'@' | '$.'}${string}`} */ ("distance"),
-          },
-          DIALECT: 2,
+  const result = /** @type {Chats} */ (
+    await redis.ft.search(
+      CHAT_INDEX,
+      `*=>[KNN ${count} @embedding $BLOB AS distance]`,
+      {
+        PARAMS: {
+          BLOB: float32ToBuffer(embedding),
         },
-      )
-    );
+        RETURN: [
+          "distance",
+          "originalPrompt",
+          "cacheJustification",
+          "inferredPrompt",
+          "recommendedTtl",
+          "response",
+        ],
+        SORTBY: {
+          BY: /** @type {`${'@' | '$.'}${string}`} */ ("distance"),
+        },
+        DIALECT: 2,
+      },
+    )
+  );
 
-    result.documents = result.documents.filter((doc) => {
-      return (doc.value.distance ?? maxDistance + 1) <= maxDistance;
-    });
-    result.total = result.documents.length;
+  result.documents = result.documents.filter((doc) => {
+    return (doc.value.distance ?? maxDistance + 1) <= maxDistance;
+  });
+  result.total = result.documents.length;
 
-    return result;
-  } catch (error) {
-    logger.error("Error in vss:", error);
-    throw error;
-  }
+  return result;
 }
 
 /**
@@ -216,31 +200,19 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
 export async function addChatMessage(sessionId, { id, message, isLocal }) {
   const client = getClient(); // Unique ID based on session and timestamp
 
-  try {
-    const messageKey = `${config.redis.MESSAGE_PREFIX}${sessionId}:${id}`;
-    await client.set(messageKey, message);
-    const streamId = await client.xAdd(
-      `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`,
-      "*",
-      {
-        timestamp: Date.now().toString(), // Store timestamp as string
-        messageKey: messageKey,
-        isLocal: isLocal.toString(),
-      },
-    );
-    logger.info(
-      `${isLocal ? "User" : "Bot"} message added to stream \`${config.redis.CHAT_STREAM_PREFIX}${sessionId}\``,
-    );
+  const messageKey = `${config.redis.MESSAGE_PREFIX}${sessionId}:${id}`;
+  await client.set(messageKey, message);
+  const streamId = await client.xAdd(
+    `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`,
+    "*",
+    {
+      timestamp: Date.now().toString(), // Store timestamp as string
+      messageKey: messageKey,
+      isLocal: isLocal.toString(),
+    },
+  );
 
-    return streamId;
-  } catch (error) {
-    logger.error(
-      `Failed to add message to stream \`${config.redis.CHAT_STREAM_PREFIX}${sessionId}\`:`,
-      error,
-    );
-    // Depending on requirements, you might want to re-throw or handle the error differently
-    throw error;
-  }
+  return streamId;
 }
 
 /**
@@ -253,33 +225,25 @@ export async function getPreviousChatMessage(sessionId, entryId) {
   const client = getClient();
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
-  try {
-    // Get the message before the specified message ID
-    const entries = await client.xRevRange(streamKey, entryId, "-", {
-      COUNT: 2,
-    });
+  // Get the message before the specified message ID
+  const entries = await client.xRevRange(streamKey, entryId, "-", {
+    COUNT: 2,
+  });
 
-    if (entries.length === 0) {
-      return null; // No message found before the specified ID
-    }
-
-    const entry = entries[1];
-    const { id, timestamp, messageKey, isLocal } = entry.message;
-
-    return {
-      id,
-      timestamp: parseInt(timestamp, 10),
-      message: (await client.get(messageKey)) ?? "",
-      messageKey,
-      isLocal: isLocal === "true",
-    };
-  } catch (error) {
-    logger.error(
-      `Failed to retrieve message before ${entryId} from stream ${streamKey}`,
-      error,
-    );
-    throw error;
+  if (entries.length === 0) {
+    return null; // No message found before the specified ID
   }
+
+  const entry = entries[1];
+  const { id, timestamp, messageKey, isLocal } = entry.message;
+
+  return {
+    id,
+    timestamp: parseInt(timestamp, 10),
+    message: (await client.get(messageKey)) ?? "",
+    messageKey,
+    isLocal: isLocal === "true",
+  };
 }
 
 /**
@@ -304,30 +268,22 @@ export async function getChatMessage(sessionId, entryId) {
   const client = getClient();
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
-  try {
-    // Get the specific message by entry ID
-    const entries = await client.xRange(streamKey, entryId, entryId);
+  // Get the specific message by entry ID
+  const entries = await client.xRange(streamKey, entryId, entryId);
 
-    if (entries.length === 0) {
-      return null; // No message found for the specified entry ID
-    }
-
-    const entry = entries[0];
-    const { id, timestamp, messageKey, isLocal } = entry.message;
-    return {
-      id,
-      timestamp: parseInt(timestamp, 10),
-      message: await client.get(messageKey),
-      messageKey,
-      isLocal: isLocal === "true",
-    };
-  } catch (error) {
-    logger.error(
-      `Failed to retrieve message ${entryId} from stream \`${streamKey}\``,
-      error,
-    );
-    throw error;
+  if (entries.length === 0) {
+    return null; // No message found for the specified entry ID
   }
+
+  const entry = entries[0];
+  const { id, timestamp, messageKey, isLocal } = entry.message;
+  return {
+    id,
+    timestamp: parseInt(timestamp, 10),
+    message: await client.get(messageKey),
+    messageKey,
+    isLocal: isLocal === "true",
+  };
 }
 
 /**
@@ -340,36 +296,25 @@ export async function getChatMessages(sessionId) {
   const client = getClient();
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
-  try {
-    // '-' means the minimum possible ID, '+' means the maximum possible ID
-    const streamEntries = await client.xRange(streamKey, "-", "+");
+  // '-' means the minimum possible ID, '+' means the maximum possible ID
+  const streamEntries = await client.xRange(streamKey, "-", "+");
 
-    const messages = await Promise.all(
-      streamEntries.map(async (entry) => {
-        const { id, timestamp, messageKey, isLocal } = entry.message;
+  const messages = await Promise.all(
+    streamEntries.map(async (entry) => {
+      const { id, timestamp, messageKey, isLocal } = entry.message;
 
-        return {
-          entryId: entry.id,
-          id,
-          timestamp: parseInt(timestamp, 10),
-          message: (await client.get(messageKey)) ?? "",
-          messageKey,
-          isLocal: isLocal === "true",
-        };
-      }),
-    );
+      return {
+        entryId: entry.id,
+        id,
+        timestamp: parseInt(timestamp, 10),
+        message: (await client.get(messageKey)) ?? "",
+        messageKey,
+        isLocal: isLocal === "true",
+      };
+    }),
+  );
 
-    logger.info(
-      `Retrieved ${messages.length} messages from stream \`${streamKey}\``,
-    );
-    return messages;
-  } catch (error) {
-    logger.error(
-      `Failed to retrieve messages from stream \`${streamKey}\`:`,
-      error,
-    );
-    throw error;
-  }
+  return messages;
 }
 
 /**
@@ -381,46 +326,36 @@ export async function deleteChatMessages(sessionId) {
   const client = getClient();
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
 
-  try {
-    const messages = await getChatMessages(sessionId);
-    await client.del(
-      [streamKey].concat(
-        messages.map((message) => {
-          return message.messageKey;
-        }),
-      ),
-    );
-    logger.info(`Deleted all messages from stream ${streamKey}`);
-  } catch (error) {
-    logger.error(`Failed to delete messages from stream ${streamKey}:`, error);
-    throw error;
-  }
+  const messages = await getChatMessages(sessionId);
+  await client.del(
+    [streamKey].concat(
+      messages.map((message) => {
+        return message.messageKey;
+      }),
+    ),
+  );
 }
 
 /**
  * Flushes all data in Redis.
  */
 export async function deleteKeys() {
-  try {
-    const client = getClient();
+  const client = getClient();
 
-    const exists = await haveIndex();
-    if (exists) {
-      await client.ft.dropIndex(config.redis.CHAT_INDEX);
-    }
+  const exists = await haveIndex();
 
-    await client.del([
-      ...(await client.keys(`${config.redis.CHAT_PREFIX}*`)),
-      ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
-      ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
-      ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),
-      config.log.ERROR_STREAM,
-      config.log.LOG_STREAM,
-    ]);
-
-    await createIndexIfNotExists();
-  } catch (error) {
-    logger.error("Failed to clear cache:", error);
-    throw error;
+  if (exists) {
+    await client.ft.dropIndex(config.redis.CHAT_INDEX);
   }
+
+  await client.del([
+    ...(await client.keys(`${config.redis.CHAT_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),
+    config.log.ERROR_STREAM,
+    config.log.LOG_STREAM,
+  ]);
+
+  await createIndexIfNotExists();
 }

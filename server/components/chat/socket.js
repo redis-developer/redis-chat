@@ -12,32 +12,33 @@ export const wss = new WebSocketServer({ noServer: true });
  * @param {import("express").Request} req - The HTTP request object.
  */
 function onConnection(ws, req) {
-  /**
-   * Sends a response to the WebSocket client.
-   *
-   * @param {string} response - The response message to send.
-   */
-  const send = (response) => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(response);
-    } else {
-      logger.warn("WebSocket is not open, cannot send message");
-    }
-  };
-
-  logger.debug("Socket connection established");
-
   session(req, /** @type {any} */ ({}), async () => {
     const sessionId = req.session.id;
 
     if (!sessionId) {
       return;
     }
+    /**
+     * Sends a response to the WebSocket client.
+     *
+     * @param {string} response - The response message to send.
+     */
+    const send = (response) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(response);
+      } else {
+        logger.warn("WebSocket is not open, cannot send message", {
+          sessionId: req.session.id,
+        });
+      }
+    };
+
+    logger.debug("Socket connection established", {
+      sessionId: req.session.id,
+    });
 
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
-      console.log(data);
-      console.log(data.toString());
       const { cmd, id, message } = JSON.parse(data.toString());
 
       if (cmd === "prompt") {
@@ -47,7 +48,7 @@ function onConnection(ws, req) {
       } else if (cmd === "clear_session") {
         await ctrl.clearMessages(send, sessionId);
       } else if (cmd === "clear_all") {
-        await ctrl.clearCache(send);
+        await ctrl.clearCache(send, sessionId);
       }
     });
 

@@ -1,18 +1,7 @@
 import { answerPrompt } from "../../services/ai";
 import { randomBytes } from "../../utils/crypto";
 import logger from "../../utils/log";
-import {
-  cachePrompt,
-  addChatMessage,
-  createIndexIfNotExists,
-  getChatMessages,
-  vss,
-  deleteChatMessages,
-  getPreviousChatMessage,
-  getChatMessage,
-  changeChatMessage,
-  deleteKeys,
-} from "./store";
+import * as store from "./store";
 import * as view from "./view";
 
 /**
@@ -22,20 +11,41 @@ import * as view from "./view";
  * @param {string} sessionId - The ID of the chat session to clear messages for.
  */
 export async function clearMessages(send, sessionId) {
-  logger.info(`Clearing messages for session \`${sessionId}\``);
-  await deleteChatMessages(sessionId);
-  send(view.clearMessages());
+  try {
+    logger.info(`Clearing messages for session \`${sessionId}\``, {
+      sessionId,
+    });
+    await store.deleteChatMessages(sessionId);
+    send(view.clearMessages());
+  } catch (error) {
+    logger.error(`Failed to delete messages for session ${sessionId}:`, {
+      error,
+      sessionId,
+    });
+    throw error;
+  }
 }
 
 /**
  * Clears the entire cache.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
+ * @param {string} sessionId - The ID of the chat session.
  */
-export async function clearCache(send) {
-  logger.info("Clearing Redis");
-  await deleteKeys();
-  send(view.clearMessages());
+export async function clearCache(send, sessionId) {
+  try {
+    logger.info("Clearing Redis", {
+      sessionId,
+    });
+    await store.deleteKeys();
+    send(view.clearMessages());
+  } catch (error) {
+    logger.error("Failed to clear cache:", {
+      error,
+      sessionId,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -44,24 +54,35 @@ export async function clearCache(send) {
  * the inferred prompt and cache justification.
  *
  * @param {string} prompt - The prompt to check in the cache.
+ * @param {string} sessionId - The ID of the chat session.
  *
  * @return {Promise<import("./store").Chat | undefined>} - An object containing the cached response and metadata,
  */
-async function findSimilarPrompt(prompt) {
-  const { total, documents } = await vss(prompt);
+async function findSimilarPrompt(prompt, sessionId) {
+  try {
+    const { total, documents } = await store.vss(prompt);
 
-  logger.info(`Found ${total ?? 0} result(s) in the semantic cache`);
-  if (total > 0) {
-    const result = documents[0].value;
+    logger.info(`Found ${total ?? 0} result(s) in the semantic cache`, {
+      sessionId,
+    });
+    if (total > 0) {
+      const result = documents[0].value;
 
-    return {
-      response: result.response,
-      embedding: result.embedding,
-      originalPrompt: result.originalPrompt,
-      inferredPrompt: result.inferredPrompt,
-      cacheJustification: result.cacheJustification,
-      recommendedTtl: result.recommendedTtl,
-    };
+      return {
+        response: result.response,
+        embedding: result.embedding,
+        originalPrompt: result.originalPrompt,
+        inferredPrompt: result.inferredPrompt,
+        cacheJustification: result.cacheJustification,
+        recommendedTtl: result.recommendedTtl,
+      };
+    }
+  } catch (error) {
+    logger.error("Error in vss:", {
+      error,
+      sessionId,
+    });
+    throw error;
   }
 }
 
@@ -73,29 +94,57 @@ async function findSimilarPrompt(prompt) {
  * @param {string} cacheId - The ID of the cache entry.
  */
 export async function askLlm(sessionId, prompt, cacheId) {
-  const messageHistory = await getChatMessages(sessionId);
-  const result = await answerPrompt(
-    prompt,
-    messageHistory.map((message) => ({
-      role: message.isLocal ? "user" : "assistant",
-      content: message.message,
-    })),
-  );
+  try {
+    const messageHistory = await store.getChatMessages(sessionId);
+    logger.info(
+      `Retrieved ${messageHistory.length} messages from session \`${sessionId}\``,
+      {
+        sessionId,
+      },
+    );
 
-  if (result.canCacheResponse) {
-    logger.info(`Cacheable prompt found: ${prompt}`);
-    logger.info(`Inferred prompt: ${result.inferredPrompt}`);
-    logger.info(`LLM response: ${result.response}`);
-    await cachePrompt(cacheId, {
-      originalPrompt: prompt,
-      inferredPrompt: result.inferredPrompt,
-      response: result.response,
-      cacheJustification: result.cacheJustification,
-      recommendedTtl: result.recommendedTtl,
+    logger.info(`Asking the LLM: ${prompt}`, {
+      sessionId,
     });
-  }
+    const result = await answerPrompt(
+      prompt,
+      messageHistory.map((message) => ({
+        role: message.isLocal ? "user" : "assistant",
+        content: message.message,
+      })),
+    );
 
-  return result.response;
+    if (result.canCacheResponse) {
+      logger.info(`Cacheable prompt found: ${prompt}`, {
+        sessionId,
+        inferredPrompt: result.inferredPrompt,
+        cacheJustification: result.cacheJustification,
+        recommendedTtl: result.recommendedTtl,
+      });
+
+      await store.cachePrompt(cacheId, {
+        originalPrompt: prompt,
+        inferredPrompt: result.inferredPrompt,
+        response: result.response,
+        cacheJustification: result.cacheJustification,
+        recommendedTtl: result.recommendedTtl,
+      });
+    } else {
+      logger.info(`Prompt unable to be cached: ${prompt}`, {
+        sessionId,
+        cacheJustification: result.cacheJustification,
+      });
+    }
+
+    return result.response;
+  } catch (error) {
+    logger.error(`Failed to ask LLM \`${prompt}\`:`, {
+      error,
+      sessionId,
+      prompt,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -107,7 +156,7 @@ export async function askLlm(sessionId, prompt, cacheId) {
  * @param {boolean} [noCache=false] - If true, skips the cache check and always generates a new response.
  */
 export async function handleMessage(send, sessionId, prompt, noCache = false) {
-  await createIndexIfNotExists();
+  let botResponseSent = false;
   const userMessageId = `chat-user-${randomBytes(20)}`;
   const botId = `chat-bot-${randomBytes(20)}`;
   const userMessage = {
@@ -121,11 +170,16 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
     message: "...",
     isLocal: false,
   };
-  let botResponseSent = false;
-  try {
-    const messageId = await addChatMessage(sessionId, userMessage);
 
-    logger.debug(`Sending user message: ${messageId}`);
+  try {
+    await store.createIndexIfNotExists();
+
+    const messageId = await store.addChatMessage(sessionId, userMessage);
+
+    logger.info(`User message added to stream for session \`${sessionId}\``, {
+      sessionId,
+    });
+
     send(
       view.renderMessage({
         ...userMessage,
@@ -133,7 +187,6 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
       }),
     );
 
-    logger.debug(`Sending initial response: ${response.id}`);
     send(
       view.renderMessage({
         ...response,
@@ -143,7 +196,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
     botResponseSent = true;
 
     if (!noCache) {
-      const cacheResult = await findSimilarPrompt(prompt);
+      const cacheResult = await findSimilarPrompt(prompt, sessionId);
 
       if (cacheResult) {
         response.message = cacheResult.response;
@@ -154,9 +207,12 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
       response.message = await askLlm(sessionId, prompt, botId);
     }
 
-    response.id = await addChatMessage(sessionId, response);
+    response.id = await store.addChatMessage(sessionId, response);
 
-    logger.debug(`Replacing ${botId} response with: ${response.id}`);
+    logger.info(`Bot message added to stream for session \`${sessionId}\``, {
+      sessionId,
+    });
+
     const replacement = view.renderMessage({
       ...response,
       replaceId: botId,
@@ -166,7 +222,10 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 
     return replacement;
   } catch (error) {
-    logger.error(`Error handling message:`, error);
+    logger.error(`Error handling message:`, {
+      error,
+      sessionId,
+    });
 
     const message = {
       id: botId,
@@ -203,26 +262,33 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
 export async function regenerateMessage(send, sessionId, entryId) {
   logger.info(
     `Regenerating message \`${entryId}\` for session \`${sessionId}\``,
+    {
+      sessionId,
+    },
   );
 
   const botId = `chat-bot-${randomBytes(20)}`;
-  const promptMessage = await getPreviousChatMessage(sessionId, entryId);
-  const responseMessage = await getChatMessage(sessionId, entryId);
-
-  if (!(promptMessage && responseMessage)) {
-    logger.warn(`No previous message found for ID: ${entryId}`);
-    const response = view.renderMessage({
-      replaceId: entryId,
-      id: entryId,
-      message: "No previous message found to regenerate.",
-      isLocal: false,
-    });
-    send(response);
-    return response;
-  }
-
   try {
-    logger.debug(`Replacing response: ${entryId}`);
+    const promptMessage = await store.getPreviousChatMessage(
+      sessionId,
+      entryId,
+    );
+    const responseMessage = await store.getChatMessage(sessionId, entryId);
+
+    if (!(promptMessage && responseMessage)) {
+      logger.warn(`No previous message found for ID: ${entryId}`, {
+        sessionId,
+      });
+
+      const response = view.renderMessage({
+        replaceId: entryId,
+        id: entryId,
+        message: "No previous message found to regenerate.",
+        isLocal: false,
+      });
+      send(response);
+      return response;
+    }
 
     send(
       view.renderMessage({
@@ -236,7 +302,11 @@ export async function regenerateMessage(send, sessionId, entryId) {
 
     const text = await askLlm(sessionId, promptMessage.message, botId);
 
-    await changeChatMessage(responseMessage.messageKey, text);
+    logger.info(`Replacing ${responseMessage.messageKey} with ${text}`, {
+      sessionId,
+    });
+
+    await store.changeChatMessage(responseMessage.messageKey, text);
     const response = view.renderMessage({
       replaceId: entryId,
       id: entryId,
@@ -247,7 +317,10 @@ export async function regenerateMessage(send, sessionId, entryId) {
 
     return response;
   } catch (error) {
-    logger.error("Error regenerating message:", error);
+    logger.error("Error regenerating message:", {
+      error,
+      sessionId,
+    });
     const response = view.renderMessage({
       replaceId: entryId,
       id: entryId,
@@ -266,15 +339,24 @@ export async function regenerateMessage(send, sessionId, entryId) {
  * @param {string} sessionId - The ID of the chat session.
  */
 export async function initializeChat(send, sessionId) {
-  const messages = await getChatMessages(sessionId);
+  try {
+    logger.info(`Initializing chat for session \`${sessionId}\``, {
+      sessionId,
+    });
+    const messages = await store.getChatMessages(sessionId);
 
-  for (const message of messages) {
-    send(
-      view.renderMessage({
-        id: message.entryId,
-        message: message.message,
-        isLocal: message.isLocal,
-      }),
-    );
+    for (const message of messages) {
+      send(
+        view.renderMessage({
+          id: message.entryId,
+          message: message.message,
+          isLocal: message.isLocal,
+        }),
+      );
+    }
+  } catch (error) {
+    logger.error(`Failed to initialize chat for session \`${sessionId}\`:`, {
+      sessionId,
+    });
   }
 }
