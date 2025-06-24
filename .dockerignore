@@ -1,7 +1,16 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 public/styles.css
+__tests__
+.prettierignore
+bun.pretest.js
+compose.yml
+Dockerfile
 Makefile
+README.md
+
+# env files (can opt-in for commiting if needed)
+.env*
 
 # dependencies
 /node_modules
@@ -27,8 +36,3 @@ Makefile
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# env files (can opt-in for commiting if needed)
-.env*
-!.env.example
-!.env.docker
