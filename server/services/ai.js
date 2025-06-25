@@ -1,19 +1,64 @@
 import { z } from "zod";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createVertex } from "@ai-sdk/google-vertex";
 import { generateText, embed } from "ai";
 import config from "../config";
 
-const anthropic = createAnthropic({
-  apiKey: config.anthropic.API_KEY,
-});
-const openai = createOpenAI({
-  apiKey: config.openai.API_KEY,
-});
-const llm = {
-  chat: anthropic(config.anthropic.CHAT_MODEL),
-  embeddings: openai.embedding(config.openai.EMBEDDINGS_MODEL),
-};
+/**
+ * Returns the configured LLM based on the environment settings.
+ *
+ * @returns {{ chat: import("@ai-sdk/provider").LanguageModelV1; embeddings: import("@ai-sdk/provider").EmbeddingModelV1<string> }} - The configured LLM instance.
+ */
+function getLlm() {
+  /** @type {import("@ai-sdk/provider").LanguageModelV1 | null} */
+  let chat = null;
+  /** @type {import("@ai-sdk/provider").EmbeddingModelV1<string> | null} */
+  let embeddings = null;
+
+  if (config.anthropic.API_KEY) {
+    chat = createAnthropic({ apiKey: config.anthropic.API_KEY })(
+      config.anthropic.CHAT_MODEL,
+    );
+  }
+
+  if (config.openai.API_KEY) {
+    const openai = createOpenAI({
+      apiKey: config.openai.API_KEY,
+    });
+
+    embeddings = openai.embedding(config.openai.EMBEDDINGS_MODEL);
+
+    chat = chat || openai(config.openai.CHAT_MODEL);
+  }
+
+  if (config.google.CREDENTIALS) {
+    const vertex = createVertex({
+      project: config.google.PROJECT_ID,
+      location: config.google.LOCATION,
+      googleAuthOptions: {
+        credentials: JSON.parse(config.google.CREDENTIALS),
+      },
+    });
+
+    embeddings =
+      embeddings || vertex.textEmbeddingModel(config.google.EMBEDDINGS_MODEL);
+    chat = chat || vertex(config.google.CHAT_MODEL);
+  }
+
+  if (!chat || !embeddings) {
+    throw new Error(
+      "No LLM configured. Please set the appropriate environment variables for Anthropic, OpenAI, or Google Vertex AI.",
+    );
+  }
+
+  return {
+    chat,
+    embeddings,
+  };
+}
+
+const llm = getLlm();
 
 /**
  * Generates an embedding for the provided text using the configured LLM embeddings model.

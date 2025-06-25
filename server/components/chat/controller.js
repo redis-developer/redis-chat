@@ -344,7 +344,6 @@ export async function initializeChat(send, sessionId) {
       sessionId,
     });
 
-    send(view.renderSession(sessionId));
     const messages = await store.getChatMessages(sessionId);
 
     for (const message of messages) {

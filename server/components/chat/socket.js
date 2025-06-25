@@ -43,6 +43,7 @@ function onConnection(ws, req) {
 
       switch (cmd) {
         case "prompt":
+          console.log(message);
           await ctrl.handleMessage(send, sessionId, message);
           break;
         case "regenerate":
