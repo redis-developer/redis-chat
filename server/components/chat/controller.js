@@ -1,4 +1,4 @@
-import { answerPrompt } from "../../services/ai";
+import { answerPrompt } from "../../services/ai/ai";
 import { randomBytes } from "../../utils/crypto";
 import logger from "../../utils/log";
 import * as store from "./store";
@@ -60,7 +60,11 @@ export async function clearCache(send, sessionId) {
  */
 async function findSimilarPrompt(prompt, sessionId) {
   try {
-    const { total, documents } = await store.vss(prompt);
+    const { total, documents } = await store.vss(prompt, {
+      sessionId,
+      globalMemory: true,
+      longTermMemory: true,
+    });
 
     logger.info(`Found ${total ?? 0} result(s) in the semantic cache`, {
       sessionId,
@@ -72,7 +76,7 @@ async function findSimilarPrompt(prompt, sessionId) {
         response: result.response,
         embedding: result.embedding,
         originalPrompt: result.originalPrompt,
-        inferredPrompt: result.inferredPrompt,
+        inferredQuestion: result.inferredQuestion,
         cacheJustification: result.cacheJustification,
         recommendedTtl: result.recommendedTtl,
       };
@@ -108,31 +112,115 @@ export async function askLlm(sessionId, prompt, cacheId) {
     });
     const result = await answerPrompt(
       prompt,
+      async ({ question, globalMemory, longTermMemory }) => {
+        if (longTermMemory) {
+          logger.info(`Searching long-term memory for question: ${question}`, {
+            sessionId,
+          });
+        } else {
+          logger.info(`Searching global memory for question: ${question}`, {
+            sessionId,
+          });
+        }
+
+        const results = await store.vss(question, {
+          globalMemory,
+          longTermMemory,
+          sessionId,
+        });
+
+        if (longTermMemory) {
+          logger.info(
+            `Found ${results.total ?? 0} result(s) in long-term memory`,
+            {
+              sessionId,
+            },
+          );
+        } else {
+          logger.info(
+            `Found ${results.total ?? 0} result(s) in global memory`,
+            {
+              sessionId,
+            },
+          );
+        }
+
+        if (results.total > 0) {
+          return results.documents[0].value.response;
+        }
+
+        return "No relevant information found in memory store.";
+      },
       messageHistory.map((message) => ({
         role: message.isLocal ? "user" : "assistant",
         content: message.message,
       })),
     );
 
-    if (result.canCacheResponse) {
-      logger.info(`Cacheable prompt found: ${prompt}`, {
+    if (result.storeInGlobalMemory || result.storeInLongTermMemory) {
+      const globalMemory = result.storeInGlobalMemory;
+      const longTermMemory = result.storeInLongTermMemory;
+      const cacheJustification = longTermMemory
+        ? result.longTermMemoryJustification
+        : result.globalMemoryJustification;
+      const logMeta = {
         sessionId,
-        inferredPrompt: result.inferredPrompt,
-        cacheJustification: result.cacheJustification,
+        originalPrompt: prompt,
+        location: longTermMemory ? "long-term memory" : "global memory",
+        inferredQuestion: result.inferredQuestion,
+        justification: result.longTermMemoryJustification,
         recommendedTtl: result.recommendedTtl,
+      };
+
+      const existing = await store.vss(result.inferredQuestion, {
+        globalMemory,
+        longTermMemory,
+        sessionId,
       });
 
-      await store.cachePrompt(cacheId, {
-        originalPrompt: prompt,
-        inferredPrompt: result.inferredPrompt,
-        response: result.response,
-        cacheJustification: result.cacheJustification,
-        recommendedTtl: result.recommendedTtl,
-      });
+      if (result.storeInLongTermMemory) {
+        logger.info(
+          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in long-term memory`,
+          logMeta,
+        );
+      } else if (result.storeInGlobalMemory) {
+        logger.info(
+          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in global memory`,
+          logMeta,
+        );
+      }
+
+      if (existing.total > 0) {
+        logger.info(
+          `Found ${existing.total} existing result(s) in memory for "${result.inferredQuestion}", skipping storing additional values.`,
+          {
+            sessionId,
+          },
+        );
+      } else {
+        await store.cachePrompt(
+          cacheId,
+          {
+            originalPrompt: prompt,
+            inferredQuestion: result.inferredQuestion,
+            response: result.response,
+            cacheJustification,
+            recommendedTtl: result.recommendedTtl,
+          },
+          {
+            sessionId,
+            globalMemory,
+            longTermMemory,
+          },
+        );
+      }
     } else {
-      logger.info(`Prompt unable to be cached: ${prompt}`, {
+      logger.info(`Unable to store "${result.inferredQuestion}" in memory`, {
         sessionId,
-        cacheJustification: result.cacheJustification,
+        originalPrompt: prompt,
+        inferredQuestion: result.inferredQuestion,
+        longTermMemoryJustification: result.longTermMemoryJustification,
+        globalMemoryJustification: result.globalMemoryJustification,
       });
     }
 
@@ -172,7 +260,7 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
   };
 
   try {
-    await store.createIndexIfNotExists();
+    await store.createIndexIfNotExists(sessionId);
 
     const messageId = await store.addChatMessage(sessionId, userMessage);
 

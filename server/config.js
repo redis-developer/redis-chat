@@ -48,8 +48,18 @@ const config = {
       process.env.REDIS_SESSION_SECRET || "default_session_secret",
     SESSION_PREFIX: process.env.REDIS_SESSION_PREFIX || "session:",
     CHAT_STREAM_PREFIX: process.env.REDIS_CHAT_STREAM_PREFIX || "chat:",
-    CHAT_INDEX: process.env.REDIS_CHAT_INDEX || "idx:chat",
-    CHAT_PREFIX: process.env.REDIS_CHAT_PREFIX || "qa:",
+    SHORT_TERM_MEMORY_INDEX:
+      process.env.REDIS_SHORT_TERM_MEMORY_INDEX || "idx:short_term_memory",
+    SHORT_TERM_MEMORY_PREFIX:
+      process.env.REDIS_SHORT_TERM_MEMORY_PREFIX || "short_term_memory:",
+    LONG_TERM_MEMORY_INDEX:
+      process.env.REDIS_LONG_TERM_MEMORY_INDEX || "idx:long_term_memory",
+    LONG_TERM_MEMORY_PREFIX:
+      process.env.REDIS_LONG_TERM_MEMORY_PREFIX || "long_term_memory:",
+    GLOBAL_MEMORY_INDEX:
+      process.env.REDIS_GLOBAL_MEMORY_INDEX || "idx:global_memory",
+    GLOBAL_MEMORY_PREFIX:
+      process.env.REDIS_GLOBAL_MEMORY_PREFIX || "global_memory:",
     MESSAGE_PREFIX: process.env.REDIS_MESSAGE_PREFIX || "message:",
   },
 };

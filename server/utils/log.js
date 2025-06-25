@@ -20,6 +20,15 @@ class EnumerableError extends Error {
   }
 }
 
+/**
+ * Creates a deep clone of the given value using JSON serialization.
+ *
+ * @param {any} value - The value to clone.
+ */
+function quickClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 class RedisTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
@@ -91,6 +100,8 @@ class WebsocketTransport extends Transport {
         callback();
         return;
       }
+
+      meta = quickClone(meta);
 
       if (meta?.error) {
         meta.error = new EnumerableError(meta.error.message);

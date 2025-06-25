@@ -1,7 +1,7 @@
 import { SCHEMA_FIELD_TYPE, SCHEMA_VECTOR_FIELD_ALGORITHM } from "redis";
 import config from "../../config";
 import getClient from "../../redis";
-import { embedText } from "../../services/ai";
+import { embedText, llm } from "../../services/ai/ai";
 import { float32ToBuffer } from "../../utils/convert";
 
 /**
@@ -14,7 +14,7 @@ import { float32ToBuffer } from "../../utils/convert";
  * @typedef {Object} Chat
  * @property {number} [distance]
  * @property {string} originalPrompt
- * @property {string} inferredPrompt
+ * @property {string} inferredQuestion
  * @property {string} cacheJustification
  * @property {number} recommendedTtl
  * @property {string} response
@@ -31,40 +31,54 @@ import { float32ToBuffer } from "../../utils/convert";
  * @property {ChatDocument[]} documents
  */
 
-const CHAT_INDEX = config.redis.CHAT_INDEX;
-const CHAT_PREFIX = config.redis.CHAT_PREFIX;
+const {
+  LONG_TERM_MEMORY_INDEX,
+  LONG_TERM_MEMORY_PREFIX,
+  GLOBAL_MEMORY_INDEX,
+  GLOBAL_MEMORY_PREFIX,
+} = config.redis;
 
 /**
- * Checks if the CHAT_INDEX already exists in Redis
+ * Generates a Redis index name for long-term memory based on the session ID.
+ *
+ * @param {string} sessionId - The session ID for which to generate the index name.
+ */
+export function getLongTermMemoryIndex(sessionId) {
+  return `${LONG_TERM_MEMORY_INDEX}-${sessionId}`;
+}
+
+/**
+ * Checks if the index already exists in Redis
+ *
+ * @param {string} name - The name of the index to check for existence.
  *
  * @returns {Promise<boolean>}
  */
-export async function haveIndex() {
+export async function haveIndex(name) {
   const redis = getClient();
   const indexes = await redis.ft._list();
 
   return indexes.some((index) => {
-    return index === CHAT_INDEX;
+    return index === name;
   });
 }
 
 /**
- * Creates the CHAT_INDEX if it doesn't exist already
+ * Creates a Redis index for chat messages.
+ *
+ * @param {string} name - The name of the index to create.
+ * @param {string} prefix - The prefix for the index.
  */
-export async function createIndexIfNotExists() {
-  if (await haveIndex()) {
-    return;
-  }
-
+export async function createIndex(name, prefix) {
   const redis = getClient();
   await redis.ft.create(
-    CHAT_INDEX,
+    name,
     {
       "$.embedding": {
         type: SCHEMA_FIELD_TYPE.VECTOR,
         TYPE: "FLOAT32",
         ALGORITHM: SCHEMA_VECTOR_FIELD_ALGORITHM.FLAT,
-        DIM: config.openai.EMBEDDINGS_DIMENSIONS,
+        DIM: llm.dimensions,
         DISTANCE_METRIC: "L2",
         AS: "embedding",
       },
@@ -72,9 +86,9 @@ export async function createIndexIfNotExists() {
         type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "originalPrompt",
       },
-      "$.inferredPrompt": {
+      "$.inferredQuestion": {
         type: SCHEMA_FIELD_TYPE.TEXT,
-        AS: "inferredPrompt",
+        AS: "inferredQuestion",
       },
       "$.cacheJustification": {
         type: SCHEMA_FIELD_TYPE.TEXT,
@@ -91,9 +105,32 @@ export async function createIndexIfNotExists() {
     },
     {
       ON: "JSON",
-      PREFIX: CHAT_PREFIX,
+      PREFIX: prefix,
     },
   );
+}
+
+/**
+ * Creates the CHAT_INDEX if it doesn't exist already
+ *
+ * @param {string | null} [sessionId=null] - The session ID for which to create the index.
+ */
+export async function createIndexIfNotExists(sessionId = null) {
+  const haveGlobalIndex = await haveIndex(GLOBAL_MEMORY_INDEX);
+
+  if (!haveGlobalIndex) {
+    await createIndex(GLOBAL_MEMORY_INDEX, GLOBAL_MEMORY_PREFIX);
+  }
+
+  if (sessionId) {
+    const longTermIndex = getLongTermMemoryIndex(sessionId);
+    const longTermPrefix = `${LONG_TERM_MEMORY_PREFIX}${sessionId}:`;
+    const haveLongTermIndex = await haveIndex(longTermIndex);
+
+    if (!haveLongTermIndex) {
+      await createIndex(longTermIndex, longTermPrefix);
+    }
+  }
 }
 
 /**
@@ -101,6 +138,10 @@ export async function createIndexIfNotExists() {
  *
  * @param {string} id - The unique identifier for the chat document.
  * @param {Omit<Chat, "embedding">} chat
+ * @param {Object} options - Options for caching the prompt.
+ * @param {string} options.sessionId - The session ID for the chat.
+ * @param {boolean} options.longTermMemory - Store in long-term memory.
+ * @param {boolean} options.globalMemory - Store in global memory.
  *
  * @returns {Promise<ChatDocument>} - The cached chat document.
  */
@@ -108,20 +149,27 @@ export async function cachePrompt(
   id,
   {
     originalPrompt,
-    inferredPrompt,
+    inferredQuestion,
     cacheJustification,
     response,
     recommendedTtl,
   },
+  { sessionId, longTermMemory, globalMemory },
 ) {
   const redis = getClient();
-  const embedding = await embedText(inferredPrompt);
+  const embedding = await embedText(inferredQuestion);
+  let CHAT_PREFIX = config.redis.GLOBAL_MEMORY_PREFIX;
+
+  if (longTermMemory) {
+    CHAT_PREFIX = `${config.redis.LONG_TERM_MEMORY_PREFIX}${sessionId}:`;
+  }
+
   const fullId = `${CHAT_PREFIX}${id}`;
 
   await redis.json.set(fullId, "$", {
     originalPrompt,
     embedding,
-    inferredPrompt,
+    inferredQuestion,
     cacheJustification,
     recommendedTtl,
     response,
@@ -136,7 +184,7 @@ export async function cachePrompt(
     value: {
       originalPrompt,
       embedding,
-      inferredPrompt,
+      inferredQuestion,
       cacheJustification,
       recommendedTtl,
       response,
@@ -145,20 +193,18 @@ export async function cachePrompt(
 }
 
 /**
- * Searches for similar chat messages based on the provided prompt.
+ * Looks up a chat message in Redis based on its embedding.
  *
- * @param {string} prompt - The prompt to search for similar chat messages.
- * @param {Object} options - Options for the search.
- * @param {number} [options.count=3] - The number of results to return.
- * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
+ * @param {number[]} embedding - The embedding vector to search for.
+ * @param {string} index - The index to search in (short-term, long-term, or global memory).
+ * @param {Object} options - Options for the lookup.
+ * @param {number} [options.count=1] - The number of results to return.
  */
-export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
+async function lookup(embedding, index, { count = 1 } = {}) {
   const redis = getClient();
-  const embedding = await embedText(prompt);
-
-  const result = /** @type {Chats} */ (
+  return /** @type {Chats} */ (
     await redis.ft.search(
-      CHAT_INDEX,
+      index,
       `*=>[KNN ${count} @embedding $BLOB AS distance]`,
       {
         PARAMS: {
@@ -168,7 +214,7 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
           "distance",
           "originalPrompt",
           "cacheJustification",
-          "inferredPrompt",
+          "inferredQuestion",
           "recommendedTtl",
           "response",
         ],
@@ -179,13 +225,57 @@ export async function vss(prompt, { count = 1, maxDistance = 0.5 } = {}) {
       },
     )
   );
+}
 
-  result.documents = result.documents.filter((doc) => {
-    return (doc.value.distance ?? maxDistance + 1) <= maxDistance;
-  });
-  result.total = result.documents.length;
+/**
+ * Searches for similar chat messages based on the provided prompt.
+ *
+ * @param {string} prompt - The prompt to search for similar chat messages.
+ * @param {Object} memory - Memory options for the search.
+ * @param {string} [memory.sessionId] - The session ID for the chat.
+ * @param {boolean} [memory.longTermMemory=false] - Whether to search in long-term memory.
+ * @param {boolean} [memory.globalMemory=false] - Whether to search in global memory.
+ * @param {Object} options - Options for the search.
+ * @param {number} [options.count=3] - The number of results to return.
+ * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
+ */
+export async function vss(
+  prompt,
+  { sessionId, longTermMemory, globalMemory } = {},
+  { count = 1, maxDistance = 0.5 } = {},
+) {
+  const redis = getClient();
+  const embedding = await embedText(prompt);
 
-  return result;
+  /** @type {ChatDocument[]} */
+  let documents = [];
+
+  if (longTermMemory && sessionId) {
+    const result = await lookup(embedding, getLongTermMemoryIndex(sessionId), {
+      count,
+    });
+
+    documents.push(...result.documents);
+  }
+
+  if (globalMemory) {
+    const result = await lookup(embedding, config.redis.GLOBAL_MEMORY_INDEX, {
+      count,
+    });
+
+    documents.push(...result.documents);
+  }
+
+  documents = documents
+    .filter((doc) => {
+      return (doc.value.distance ?? maxDistance + 1) <= maxDistance;
+    })
+    .slice(0, count);
+
+  return {
+    total: documents.length,
+    documents,
+  };
 }
 
 /**
@@ -342,14 +432,20 @@ export async function deleteChatMessages(sessionId) {
 export async function deleteKeys() {
   const client = getClient();
 
-  const exists = await haveIndex();
+  const redis = getClient();
+  const indexes = await redis.ft._list();
 
-  if (exists) {
-    await client.ft.dropIndex(config.redis.CHAT_INDEX);
+  for (const index of indexes) {
+    if (index.includes(config.redis.LONG_TERM_MEMORY_INDEX)) {
+      await redis.ft.dropIndex(index);
+    } else if (index.includes(config.redis.GLOBAL_MEMORY_INDEX)) {
+      await redis.ft.dropIndex(index);
+    }
   }
 
   await client.del([
-    ...(await client.keys(`${config.redis.CHAT_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.LONG_TERM_MEMORY_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.GLOBAL_MEMORY_PREFIX}*`)),
     ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
     ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
     ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),
