@@ -12,6 +12,14 @@ import session from "./session";
  * @property {string} message - The log message.
  */
 
+class EnumerableError extends Error {
+  toJSON() {
+    return JSON.stringify({
+      message: this.message,
+    });
+  }
+}
+
 class RedisTransport extends Transport {
   /**
    * Logs messages to a Redis stream.
@@ -23,15 +31,19 @@ class RedisTransport extends Transport {
     try {
       const level = info.level;
       let message = info.message;
-      let meta = /** @type {unknown} */ (info[SPLAT]?.[0] ?? "{}");
+      let meta = /** @type {any} */ (info[SPLAT]?.[0] ?? "{}");
 
       if (typeof message !== "string") {
         message = JSON.stringify(message);
       }
 
-      if (/** @type {any} */ (meta)?.noStream) {
+      if (meta?.noStream) {
         callback();
         return;
+      }
+
+      if (meta?.error) {
+        meta.error = new EnumerableError(meta.error.message);
       }
 
       let metaStr = typeof meta === "string" ? meta : JSON.stringify(meta);
@@ -73,17 +85,19 @@ class WebsocketTransport extends Transport {
     try {
       const level = info.level;
       let message = info.message;
-      let meta = info[SPLAT]?.[0];
+      let meta = /** @type {any} */ (info[SPLAT]?.[0]);
 
-      if (!(/** @type {any} */ (meta)?.sessionId)) {
+      if (!meta?.sessionId) {
         callback();
         return;
       }
 
-      const sessionId = /** @type {string} */ (
-        /** @type {any} */ (meta).sessionId
-      );
-      delete (/** @type {any} */ (meta).sessionId);
+      if (meta?.error) {
+        meta.error = new EnumerableError(meta.error.message);
+      }
+
+      const sessionId = /** @type {string} */ (meta.sessionId);
+      delete meta.sessionId;
       const subscribers = this.subscribers[sessionId] || [];
 
       if (Object.keys(meta).length === 0) {
@@ -141,6 +155,19 @@ class WebsocketTransport extends Transport {
   }
 
   /**
+   * Removes a session and all its subscribers.
+   *
+   * @param {string} sessionId - The session ID to remove.
+   */
+  removeSession(sessionId) {
+    if (!this.subscribers[sessionId]) {
+      return;
+    }
+
+    delete this.subscribers[sessionId];
+  }
+
+  /**
    * Handles WebSocket connections and messages.
    *
    * @param {import("ws").WebSocket} ws - The WebSocket connection.
@@ -179,8 +206,8 @@ class WebsocketTransport extends Transport {
 }
 
 export const logWss = new WebSocketServer({ noServer: true });
-const wst = new WebsocketTransport();
-logWss.on("connection", wst.onConnection.bind(wst));
+export const logWst = new WebsocketTransport();
+logWss.on("connection", logWst.onConnection.bind(logWst));
 
 const logger = winston.createLogger({
   level: config.log.LEVEL.toLowerCase(),
@@ -188,7 +215,7 @@ const logger = winston.createLogger({
   defaultMeta: { service: config.app.FULL_NAME },
   transports: [
     new RedisTransport(),
-    wst,
+    logWst,
     new winston.transports.Console({
       format: winston.format.simple(),
     }),

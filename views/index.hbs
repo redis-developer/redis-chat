@@ -11,7 +11,15 @@
       class="flex h-20 items-baseline bg-white border-b p-4 sticky top-0 z-10"
     >
       <h1 class="text-lg font-semibold">Chat with Redis</h1>
-      <p class="ml-auto mr-2 text-sm">Session: <em>{{sessionId}}</em></p>
+      <p class="ml-auto mr-2 text-sm">Session: <em id="sessionId">{{sessionId}}</em></p>
+      <form class="mr-2" ws-send hx-on:submit="setTimeout(location.reload.bind(location), 200)" hx-disabled-elt="this">
+        <input type="hidden" name="cmd" value="new_session" />
+        <button
+          class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
+        >
+          New Session
+        </button>
+      </form>
       <form class="mr-2" ws-send hx-disabled-elt="this">
         <input type="hidden" name="cmd" value="clear_session" />
         <button

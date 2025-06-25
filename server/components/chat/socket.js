@@ -1,5 +1,5 @@
 import { WebSocketServer } from "ws";
-import logger from "../../utils/log";
+import logger, { logWst } from "../../utils/log";
 import session from "../../utils/session";
 import * as ctrl from "./controller";
 
@@ -41,14 +41,32 @@ function onConnection(ws, req) {
     ws.on("message", async (data) => {
       const { cmd, id, message } = JSON.parse(data.toString());
 
-      if (cmd === "prompt") {
-        await ctrl.handleMessage(send, sessionId, message);
-      } else if (cmd === "regenerate") {
-        await ctrl.regenerateMessage(send, sessionId, id);
-      } else if (cmd === "clear_session") {
-        await ctrl.clearMessages(send, sessionId);
-      } else if (cmd === "clear_all") {
-        await ctrl.clearCache(send, sessionId);
+      switch (cmd) {
+        case "prompt":
+          await ctrl.handleMessage(send, sessionId, message);
+          break;
+        case "regenerate":
+          await ctrl.regenerateMessage(send, sessionId, id);
+          break;
+        case "new_session":
+          await ctrl.clearMessages(send, sessionId);
+          logWst.removeSession(sessionId);
+          req.session.destroy(function (err) {
+            if (err) {
+              logger.error("Failed to regenerate session", { error: err });
+              return;
+            }
+          });
+          break;
+        case "clear_session":
+          await ctrl.clearMessages(send, sessionId);
+          break;
+        case "clear_all":
+          await ctrl.clearCache(send, sessionId);
+          break;
+        default:
+          logger.warn("Unknown command received", { cmd, sessionId });
+          return;
       }
     });
 
