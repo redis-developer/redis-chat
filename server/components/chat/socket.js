@@ -69,7 +69,7 @@ function onConnection(ws, req) {
           req.session.save();
           break;
         case "clear_all":
-          await ctrl.clearCache(send, sessionId);
+          await ctrl.clearMemory(send, sessionId);
           break;
         default:
           logger.warn("Unknown command received", { cmd: form.cmd, sessionId });

@@ -28,12 +28,12 @@ export async function clearMessages(send, sessionId, chatId) {
 }
 
 /**
- * Clears the entire cache.
+ * Clears the entire store.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
  */
-export async function clearCache(send, sessionId) {
+export async function clearMemory(send, sessionId) {
   try {
     logger.info("Clearing Redis", {
       sessionId,
@@ -41,7 +41,7 @@ export async function clearCache(send, sessionId) {
     await store.deleteKeys();
     send(view.clearMessages());
   } catch (error) {
-    logger.error("Failed to clear cache:", {
+    logger.error("Failed to clear memory:", {
       error,
       sessionId,
     });
@@ -50,24 +50,24 @@ export async function clearCache(send, sessionId) {
 }
 
 /**
- * Checks the cache for a response to the given prompt.
- * If a cached response is found, it returns the response along with
- * the inferred prompt and cache justification.
+ * Checks memory for a response to the given prompt.
+ * If a response is found, it returns the response along with
+ * the inferred prompt and reasoning.
  *
- * @param {string} prompt - The prompt to check in the cache.
+ * @param {string} prompt - The prompt to check in memory.
  * @param {string} sessionId - The ID of the chat session.
  *
- * @return {Promise<import("./store").Chat | undefined>} - An object containing the cached response and metadata,
+ * @return {Promise<import("./store").Chat | undefined>} - An object containing the stored response and metadata,
  */
 async function findSimilarPrompt(prompt, sessionId) {
   try {
     const { total, documents } = await store.vss(prompt, {
       sessionId,
-      globalMemory: true,
-      longTermMemory: true,
+      semanticMemory: true,
+      userMemory: true,
     });
 
-    logger.info(`Found ${total ?? 0} result(s) in the semantic cache`, {
+    logger.info(`Found ${total ?? 0} result(s) in semantic memory`, {
       sessionId,
     });
     if (total > 0) {
@@ -78,7 +78,7 @@ async function findSimilarPrompt(prompt, sessionId) {
         embedding: result.embedding,
         originalPrompt: result.originalPrompt,
         inferredQuestion: result.inferredQuestion,
-        cacheJustification: result.cacheJustification,
+        reasoning: result.reasoning,
         recommendedTtl: result.recommendedTtl,
       };
     }
@@ -97,9 +97,9 @@ async function findSimilarPrompt(prompt, sessionId) {
  * @param {string} sessionId - The ID of the chat session.
  * @param {string} chatId - The ID of the chat session.
  * @param {string} prompt - The prompt to send to the LLM.
- * @param {string} cacheId - The ID of the cache entry.
+ * @param {string} storeId - The ID of the stored entry.
  */
-export async function askLlm(sessionId, chatId, prompt, cacheId) {
+export async function askLlm(sessionId, chatId, prompt, storeId) {
   try {
     const messageHistory = await store.getChatMessages(sessionId, chatId);
     logger.info(
@@ -114,33 +114,30 @@ export async function askLlm(sessionId, chatId, prompt, cacheId) {
     });
     const result = await answerPrompt(
       prompt,
-      async ({ question, globalMemory, longTermMemory }) => {
-        if (longTermMemory) {
-          logger.info(`Searching long-term memory for question: ${question}`, {
+      async ({ question, semanticMemory, userMemory }) => {
+        if (userMemory) {
+          logger.info(`Searching user memory for question: ${question}`, {
             sessionId,
           });
         } else {
-          logger.info(`Searching global memory for question: ${question}`, {
+          logger.info(`Searching semantic memory for question: ${question}`, {
             sessionId,
           });
         }
 
         const results = await store.vss(question, {
-          globalMemory,
-          longTermMemory,
+          semanticMemory,
+          userMemory,
           sessionId,
         });
 
-        if (longTermMemory) {
-          logger.info(
-            `Found ${results.total ?? 0} result(s) in long-term memory`,
-            {
-              sessionId,
-            },
-          );
+        if (userMemory) {
+          logger.info(`Found ${results.total ?? 0} result(s) in user memory`, {
+            sessionId,
+          });
         } else {
           logger.info(
-            `Found ${results.total ?? 0} result(s) in global memory`,
+            `Found ${results.total ?? 0} result(s) in semantic memory`,
             {
               sessionId,
             },
@@ -159,35 +156,35 @@ export async function askLlm(sessionId, chatId, prompt, cacheId) {
       })),
     );
 
-    if (result.storeInGlobalMemory || result.storeInLongTermMemory) {
-      const globalMemory = result.storeInGlobalMemory;
-      const longTermMemory = result.storeInLongTermMemory;
-      const cacheJustification = longTermMemory
-        ? result.longTermMemoryJustification
-        : result.globalMemoryJustification;
+    if (result.storeInSemanticMemory || result.storeInUserMemory) {
+      const semanticMemory = result.storeInSemanticMemory;
+      const userMemory = result.storeInUserMemory;
+      const reasoning = userMemory
+        ? result.userMemoryReasoning
+        : result.semanticMemoryReasoning;
       const logMeta = {
         sessionId,
         originalPrompt: prompt,
-        location: longTermMemory ? "long-term memory" : "global memory",
+        location: userMemory ? "user memory" : "semantic memory",
         inferredQuestion: result.inferredQuestion,
-        justification: result.longTermMemoryJustification,
+        reasoning: result.userMemoryReasoning,
         recommendedTtl: result.recommendedTtl,
       };
 
       const existing = await store.vss(result.inferredQuestion, {
-        globalMemory,
-        longTermMemory,
+        semanticMemory,
+        userMemory,
         sessionId,
       });
 
-      if (result.storeInLongTermMemory) {
+      if (result.storeInUserMemory) {
         logger.info(
-          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in long-term memory`,
+          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in user memory`,
           logMeta,
         );
-      } else if (result.storeInGlobalMemory) {
+      } else if (result.storeInSemanticMemory) {
         logger.info(
-          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in global memory`,
+          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in semantic memory`,
           logMeta,
         );
       }
@@ -200,19 +197,19 @@ export async function askLlm(sessionId, chatId, prompt, cacheId) {
           },
         );
       } else {
-        await store.cachePrompt(
-          cacheId,
+        await store.storePrompt(
+          storeId,
           {
             originalPrompt: prompt,
             inferredQuestion: result.inferredQuestion,
             response: result.response,
-            cacheJustification,
+            reasoning,
             recommendedTtl: result.recommendedTtl,
           },
           {
             sessionId,
-            globalMemory,
-            longTermMemory,
+            semanticMemory,
+            userMemory,
           },
         );
       }
@@ -221,8 +218,8 @@ export async function askLlm(sessionId, chatId, prompt, cacheId) {
         sessionId,
         originalPrompt: prompt,
         inferredQuestion: result.inferredQuestion,
-        longTermMemoryJustification: result.longTermMemoryJustification,
-        globalMemoryJustification: result.globalMemoryJustification,
+        userMemoryReasoning: result.userMemoryReasoning,
+        semanticMemoryReasoning: result.semanticMemoryReasoning,
       });
     }
 
@@ -245,12 +242,12 @@ export async function askLlm(sessionId, chatId, prompt, cacheId) {
  * @param {string} params.sessionId - The ID of the chat session.
  * @param {string} params.chatId - The ID of the chat for the message
  * @param {string} params.message - The message received from the client.
- * @param {boolean} [noCache=false] - If true, skips the cache check and always generates a new response.
+ * @param {boolean} [skipMemory=false] - If true, skips the memory check and always generates a new response.
  */
 export async function handleMessage(
   send,
   { sessionId, chatId, message },
-  noCache = false,
+  skipMemory = false,
 ) {
   let botResponseSent = false;
   const userMessageId = `user-${randomBytes(20)}`;
@@ -290,11 +287,11 @@ export async function handleMessage(
     send(view.renderMessage(response));
     botResponseSent = true;
 
-    if (!noCache) {
-      const cacheResult = await findSimilarPrompt(message, sessionId);
+    if (!skipMemory) {
+      const memoryResult = await findSimilarPrompt(message, sessionId);
 
-      if (cacheResult) {
-        response.message = cacheResult.response;
+      if (memoryResult) {
+        response.message = memoryResult.response;
       }
     }
 

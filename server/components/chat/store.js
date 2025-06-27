@@ -16,7 +16,7 @@ import { randomBytes } from "../../utils/crypto";
  * @property {number} [distance]
  * @property {string} originalPrompt
  * @property {string} inferredQuestion
- * @property {string} cacheJustification
+ * @property {string} reasoning
  * @property {number} recommendedTtl
  * @property {string} response
  * @property {number[]} embedding
@@ -33,19 +33,19 @@ import { randomBytes } from "../../utils/crypto";
  */
 
 const {
-  LONG_TERM_MEMORY_INDEX,
-  LONG_TERM_MEMORY_PREFIX,
-  GLOBAL_MEMORY_INDEX,
-  GLOBAL_MEMORY_PREFIX,
+  USER_MEMORY_INDEX,
+  USER_MEMORY_PREFIX,
+  SEMANTIC_MEMORY_INDEX,
+  SEMANTIC_MEMORY_PREFIX,
 } = config.redis;
 
 /**
- * Generates a Redis index name for long-term memory based on the session ID.
+ * Generates a Redis index name for user memory based on the session ID.
  *
  * @param {string} sessionId - The session ID for which to generate the index name.
  */
-export function getLongTermMemoryIndex(sessionId) {
-  return `${LONG_TERM_MEMORY_INDEX}-${sessionId}`;
+export function getUserMemoryIndex(sessionId) {
+  return `${USER_MEMORY_INDEX}-${sessionId}`;
 }
 
 /**
@@ -91,9 +91,9 @@ export async function createIndex(name, prefix) {
         type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "inferredQuestion",
       },
-      "$.cacheJustification": {
+      "$.reasoning": {
         type: SCHEMA_FIELD_TYPE.TEXT,
-        AS: "cacheJustification",
+        AS: "reasoning",
       },
       "$.recommendedTtl": {
         type: SCHEMA_FIELD_TYPE.NUMERIC,
@@ -117,52 +117,46 @@ export async function createIndex(name, prefix) {
  * @param {string | null} [sessionId=null] - The session ID for which to create the index.
  */
 export async function createIndexIfNotExists(sessionId = null) {
-  const haveGlobalIndex = await haveIndex(GLOBAL_MEMORY_INDEX);
+  const haveSemanticMemoryIndex = await haveIndex(SEMANTIC_MEMORY_INDEX);
 
-  if (!haveGlobalIndex) {
-    await createIndex(GLOBAL_MEMORY_INDEX, GLOBAL_MEMORY_PREFIX);
+  if (!haveSemanticMemoryIndex) {
+    await createIndex(SEMANTIC_MEMORY_INDEX, SEMANTIC_MEMORY_PREFIX);
   }
 
   if (sessionId) {
-    const longTermIndex = getLongTermMemoryIndex(sessionId);
-    const longTermPrefix = `${LONG_TERM_MEMORY_PREFIX}${sessionId}:`;
-    const haveLongTermIndex = await haveIndex(longTermIndex);
+    const userIndex = getUserMemoryIndex(sessionId);
+    const userPrefix = `${USER_MEMORY_PREFIX}${sessionId}:`;
+    const haveUserIndex = await haveIndex(userIndex);
 
-    if (!haveLongTermIndex) {
-      await createIndex(longTermIndex, longTermPrefix);
+    if (!haveUserIndex) {
+      await createIndex(userIndex, userPrefix);
     }
   }
 }
 
 /**
- * Caches a prompt in Redis with its embedding and metadata.
+ * Stores a prompt in Redis with its embedding and metadata.
  *
  * @param {string} id - The unique identifier for the chat document.
  * @param {Omit<Chat, "embedding">} chat
  * @param {Object} options - Options for caching the prompt.
  * @param {string} options.sessionId - The session ID for the chat.
- * @param {boolean} options.longTermMemory - Store in long-term memory.
- * @param {boolean} options.globalMemory - Store in global memory.
+ * @param {boolean} options.userMemory - Store in user memory.
+ * @param {boolean} options.semanticMemory - Store in semantic memory.
  *
- * @returns {Promise<ChatDocument>} - The cached chat document.
+ * @returns {Promise<ChatDocument>} - The stored chat document.
  */
-export async function cachePrompt(
+export async function storePrompt(
   id,
-  {
-    originalPrompt,
-    inferredQuestion,
-    cacheJustification,
-    response,
-    recommendedTtl,
-  },
-  { sessionId, longTermMemory, globalMemory },
+  { originalPrompt, inferredQuestion, reasoning, response, recommendedTtl },
+  { sessionId, userMemory, semanticMemory },
 ) {
   const redis = getClient();
   const embedding = await embedText(inferredQuestion);
-  let CHAT_PREFIX = config.redis.GLOBAL_MEMORY_PREFIX;
+  let CHAT_PREFIX = config.redis.SEMANTIC_MEMORY_PREFIX;
 
-  if (longTermMemory) {
-    CHAT_PREFIX = `${config.redis.LONG_TERM_MEMORY_PREFIX}${sessionId}:`;
+  if (userMemory) {
+    CHAT_PREFIX = `${config.redis.USER_MEMORY_PREFIX}${sessionId}:`;
   }
 
   const fullId = `${CHAT_PREFIX}${id}`;
@@ -171,7 +165,7 @@ export async function cachePrompt(
     originalPrompt,
     embedding,
     inferredQuestion,
-    cacheJustification,
+    reasoning,
     recommendedTtl,
     response,
   });
@@ -186,7 +180,7 @@ export async function cachePrompt(
       originalPrompt,
       embedding,
       inferredQuestion,
-      cacheJustification,
+      reasoning,
       recommendedTtl,
       response,
     },
@@ -197,7 +191,7 @@ export async function cachePrompt(
  * Looks up a chat message in Redis based on its embedding.
  *
  * @param {number[]} embedding - The embedding vector to search for.
- * @param {string} index - The index to search in (short-term, long-term, or global memory).
+ * @param {string} index - The index to search in (short-term, user, or semantic memory).
  * @param {Object} options - Options for the lookup.
  * @param {number} [options.count=1] - The number of results to return.
  */
@@ -214,7 +208,7 @@ async function lookup(embedding, index, { count = 1 } = {}) {
         RETURN: [
           "distance",
           "originalPrompt",
-          "cacheJustification",
+          "reasoning",
           "inferredQuestion",
           "recommendedTtl",
           "response",
@@ -234,15 +228,15 @@ async function lookup(embedding, index, { count = 1 } = {}) {
  * @param {string} prompt - The prompt to search for similar chat messages.
  * @param {Object} memory - Memory options for the search.
  * @param {string} [memory.sessionId] - The session ID for the chat.
- * @param {boolean} [memory.longTermMemory=false] - Whether to search in long-term memory.
- * @param {boolean} [memory.globalMemory=false] - Whether to search in global memory.
+ * @param {boolean} [memory.userMemory=false] - Whether to search in user memory.
+ * @param {boolean} [memory.semanticMemory=false] - Whether to search in semantic memory.
  * @param {Object} options - Options for the search.
  * @param {number} [options.count=3] - The number of results to return.
  * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
  */
 export async function vss(
   prompt,
-  { sessionId, longTermMemory, globalMemory } = {},
+  { sessionId, userMemory, semanticMemory } = {},
   { count = 1, maxDistance = 0.5 } = {},
 ) {
   const redis = getClient();
@@ -251,16 +245,16 @@ export async function vss(
   /** @type {ChatDocument[]} */
   let documents = [];
 
-  if (longTermMemory && sessionId) {
-    const result = await lookup(embedding, getLongTermMemoryIndex(sessionId), {
+  if (userMemory && sessionId) {
+    const result = await lookup(embedding, getUserMemoryIndex(sessionId), {
       count,
     });
 
     documents.push(...result.documents);
   }
 
-  if (globalMemory) {
-    const result = await lookup(embedding, config.redis.GLOBAL_MEMORY_INDEX, {
+  if (semanticMemory) {
+    const result = await lookup(embedding, config.redis.SEMANTIC_MEMORY_INDEX, {
       count,
     });
 
@@ -508,16 +502,16 @@ export async function deleteKeys() {
   const indexes = await redis.ft._list();
 
   for (const index of indexes) {
-    if (index.includes(config.redis.LONG_TERM_MEMORY_INDEX)) {
+    if (index.includes(config.redis.USER_MEMORY_INDEX)) {
       await redis.ft.dropIndex(index);
-    } else if (index.includes(config.redis.GLOBAL_MEMORY_INDEX)) {
+    } else if (index.includes(config.redis.SEMANTIC_MEMORY_INDEX)) {
       await redis.ft.dropIndex(index);
     }
   }
 
   await client.del([
-    ...(await client.keys(`${config.redis.LONG_TERM_MEMORY_PREFIX}*`)),
-    ...(await client.keys(`${config.redis.GLOBAL_MEMORY_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.USER_MEMORY_PREFIX}*`)),
+    ...(await client.keys(`${config.redis.SEMANTIC_MEMORY_PREFIX}*`)),
     ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
     ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
     ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),

@@ -92,14 +92,14 @@ export async function embedText(text) {
  * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the prompt.
  * @param {(args: z.infer<typeof import("./tools").getMemorySchema>, options: import("ai").ToolExecutionOptions) => PromiseLike<string>} search - The function to execute the memory search tool.
  *
- * @returns {Promise<import("./tools").MemoryStoreToolResponse>} - The response from the LLM, including whether it can be cached.
+ * @returns {Promise<import("./tools").MemoryStoreToolResponse>} - The response from the LLM, including whether it can be stored in memory and where.
  */
 export async function answerPrompt(prompt, search, messageHistory = []) {
   let toolResponse = /** @type {import("./tools").MemoryStoreToolResponse} */ ({
-    storeInLongTermMemory: false,
-    storeInGlobalMemory: false,
-    longTermMemoryJustification: "No tool call found or invalid parameters",
-    globalMemoryJustification: "No tool call found or invalid parameters",
+    storeInUserMemory: false,
+    storeInSemanticMemory: false,
+    userMemoryReasoning: "No tool call found or invalid parameters",
+    semanticMemoryReasoning: "No tool call found or invalid parameters",
     inferredQuestion: prompt,
     recommendedTtl: -1,
   });
@@ -112,8 +112,8 @@ export async function answerPrompt(prompt, search, messageHistory = []) {
             Answer the latest user question to the best of your ability. The following tools are available to you:
 
             - Call the \`questionResponseTool\` with your response to the prompt and the information about whether it can be stored in memory. Your answers can be stored in:
-                - **Long-term memory**: If the response is relevant to the user and can help in future interactions across different sessions.
-                - **Global memory**: If the response is relevant to all users and can help in future interactions across all sessions.
+                - **User memory**: If the response is relevant to the user and can help in future interactions across different sessions.
+                - **Semantic memory**: If the response is relevant to all users and can help in future interactions across all sessions.
                 - Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
                 - Don't translate pronouns when answering the question, only when storing in memory.
             - Call the \`searchMemory\` tool to search the memory store for relevant information if needed. Appropriate times to use the \`searchMemory\` tool include:

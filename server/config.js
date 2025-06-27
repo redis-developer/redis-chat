@@ -52,14 +52,12 @@ const config = {
       process.env.REDIS_SHORT_TERM_MEMORY_INDEX || "idx:short_term_memory",
     SHORT_TERM_MEMORY_PREFIX:
       process.env.REDIS_SHORT_TERM_MEMORY_PREFIX || "short_term_memory:",
-    LONG_TERM_MEMORY_INDEX:
-      process.env.REDIS_LONG_TERM_MEMORY_INDEX || "idx:long_term_memory",
-    LONG_TERM_MEMORY_PREFIX:
-      process.env.REDIS_LONG_TERM_MEMORY_PREFIX || "long_term_memory:",
-    GLOBAL_MEMORY_INDEX:
-      process.env.REDIS_GLOBAL_MEMORY_INDEX || "idx:global_memory",
-    GLOBAL_MEMORY_PREFIX:
-      process.env.REDIS_GLOBAL_MEMORY_PREFIX || "global_memory:",
+    USER_MEMORY_INDEX: process.env.REDIS_USER_MEMORY_INDEX || "idx:user_memory",
+    USER_MEMORY_PREFIX: process.env.REDIS_USER_MEMORY_PREFIX || "user_memory:",
+    SEMANTIC_MEMORY_INDEX:
+      process.env.REDIS_SEMANTIC_MEMORY_INDEX || "idx:semantic_memory",
+    SEMANTIC_MEMORY_PREFIX:
+      process.env.REDIS_SEMANTIC_MEMORY_PREFIX || "semantic_memory:",
     MESSAGE_PREFIX: process.env.REDIS_MESSAGE_PREFIX || "message:",
   },
 };
