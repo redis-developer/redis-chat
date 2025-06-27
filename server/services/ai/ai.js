@@ -116,10 +116,9 @@ export async function answerPrompt(question, search, messageHistory = []) {
                 - **Semantic memory**: If the response is relevant to all users and can help in future interactions across all sessions.
                 - Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
                 - Don't translate pronouns when answering the question, only when storing in memory.
-            - Call the \`searchMemory\` tool to search the memory store for relevant information if needed. Appropriate times to use the \`searchMemory\` tool include:
-                - If you do not know the answer to the question or if it seems relevant to the user's past interactions.
+            - Call the \`searchUserMemory\` tool if you need to search user memory for relevant information. Appropriate times to use the \`searchUserMemory\` tool include:
+                - If you cannot answer the question without information that is based on the user's past interactions.
                 - If the user has asked a question that requires context from previous interactions.
-                - If the question is ambiguous or could benefit from additional context that may be stored in the memory.
                 - If are unable to answer the question based on the current context, but you think the answer could exist in memory.
                 - Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
           `,
@@ -129,7 +128,7 @@ export async function answerPrompt(question, search, messageHistory = []) {
     ],
     tools: {
       questionResponseTool,
-      searchMemory: getMemoryTool(search),
+      searchUserMemory: getMemoryTool(search),
     },
     toolChoice: "required",
     maxSteps: 10,

@@ -61,20 +61,10 @@ export const questionResponseTool = /** @type {import("ai").Tool} */ ({
 /**
  * @typedef {Object} MemoryStoreTool
  * @property {string} question - The question to search for in the memory store
- * @property {boolean} userMemory - Whether to search user memory
- * @property {boolean} semanticMemory - Whether to search semantic memory
  */
 
 export const getMemorySchema = z.object({
   question: z.string().describe("The question to ask the memory store"),
-  userMemory: z
-    .boolean()
-    .default(false)
-    .describe("Whether to search user memory"),
-  semanticMemory: z
-    .boolean()
-    .default(false)
-    .describe("Whether to search semantic memory"),
 });
 
 /**
@@ -84,7 +74,7 @@ export const getMemorySchema = z.object({
  */
 export function getMemoryTool(execute) {
   return /** @type {import("ai").Tool} */ ({
-    description: `Search the memory store for relevant information based on the question. You can specify whether to search user, or semantic memory. Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
+    description: `Search the user memory store for relevant user information based on the question. Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
     parameters: getMemorySchema,
     execute,
   });

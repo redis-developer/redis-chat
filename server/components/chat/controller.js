@@ -114,41 +114,25 @@ export async function askLlm(sessionId, chatId, question, storeId) {
     });
     const result = await answerPrompt(
       question,
-      async ({ question: q, semanticMemory, userMemory }) => {
-        if (userMemory) {
-          logger.info(`Searching user memory for question: ${q}`, {
-            sessionId,
-          });
-        } else {
-          logger.info(`Searching semantic memory for question: ${q}`, {
-            sessionId,
-          });
-        }
-
-        const results = await store.vss(q, {
-          semanticMemory,
-          userMemory,
+      async ({ question: q }) => {
+        logger.info(`Searching user memory for question: ${q}`, {
           sessionId,
         });
 
-        if (userMemory) {
-          logger.info(`Found ${results.total ?? 0} result(s) in user memory`, {
-            sessionId,
-          });
-        } else {
-          logger.info(
-            `Found ${results.total ?? 0} result(s) in semantic memory`,
-            {
-              sessionId,
-            },
-          );
-        }
+        const results = await store.vss(q, {
+          userMemory: true,
+          sessionId,
+        });
+
+        logger.info(`Found ${results.total ?? 0} result(s) in user memory`, {
+          sessionId,
+        });
 
         if (results.total > 0) {
           return results.documents[0].value.response;
         }
 
-        return "No relevant information found in memory store.";
+        return "No relevant information found in user memory store.";
       },
       messageHistory.map((message) => ({
         role: message.isLocal ? "user" : "assistant",
