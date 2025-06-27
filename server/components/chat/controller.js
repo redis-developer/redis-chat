@@ -61,10 +61,12 @@ export async function clearMemory(send, sessionId) {
  */
 async function searchMemory(question, sessionId) {
   try {
+    logger.info(`Searching semantic memory for question: ${question}`, {
+      sessionId,
+    });
     const { total, documents } = await store.vss(question, {
       sessionId,
       semanticMemory: true,
-      userMemory: true,
     });
 
     logger.info(`Found ${total ?? 0} result(s) in semantic memory`, {
@@ -175,13 +177,29 @@ export async function askLlm(sessionId, chatId, question, storeId) {
 
       if (existing.total > 0) {
         logger.info(
-          `Found ${existing.total} existing result(s) in memory for "${result.inferredQuestion}", skipping storing additional values.`,
+          `Found ${existing.total} existing result(s) in memory for "${result.inferredQuestion}", replacing original value.`,
           {
             sessionId,
           },
         );
+        const id = existing.documents[0].id;
+        await store.storeQuestion(
+          id,
+          {
+            originalQuestion: question,
+            inferredQuestion: result.inferredQuestion,
+            response: result.response,
+            reasoning,
+            recommendedTtl: result.recommendedTtl,
+          },
+          {
+            sessionId,
+            semanticMemory,
+            userMemory,
+          },
+        );
       } else {
-        await store.storePrompt(
+        await store.storeQuestion(
           storeId,
           {
             originalQuestion: question,
@@ -412,12 +430,10 @@ export async function regenerateMessage(send, sessionId, chatId, entryId) {
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId
- *
- * @return {Promise<string>} - The ID of the newly created chat session.
+ * @param {string} newChatId - The ID of the chat session.
  */
-export async function newChat(send, sessionId) {
+export async function newChat(send, sessionId, newChatId) {
   try {
-    const newChatId = `chat-${randomUlid()}`;
     logger.info(
       `Creating new chat session \`${newChatId}\` for session \`${sessionId}\``,
       {
@@ -445,8 +461,6 @@ export async function newChat(send, sessionId) {
         placeholder: false,
       }),
     );
-
-    return newChatId;
   } catch (error) {
     logger.error(`Failed to create new chat for session \`${sessionId}\`:`, {
       error,

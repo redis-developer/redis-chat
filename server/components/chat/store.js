@@ -151,7 +151,7 @@ export async function createIndexesIfNotExists() {
  *
  * @returns {Promise<ChatDocument>} - The stored chat document.
  */
-export async function storePrompt(
+export async function storeQuestion(
   id,
   { originalQuestion, inferredQuestion, reasoning, response, recommendedTtl },
   { sessionId, userMemory, semanticMemory },
@@ -163,8 +163,12 @@ export async function storePrompt(
   if (userMemory) {
     CHAT_PREFIX = USER_MEMORY_PREFIX;
   }
+  let fullId = id;
 
-  const fullId = `${CHAT_PREFIX}${id}`;
+  if (!fullId.includes(CHAT_PREFIX)) {
+    fullId = `${CHAT_PREFIX}${id}`;
+  }
+
   const chat = /** @type {Chat} */ ({
     originalQuestion,
     embedding,
@@ -208,6 +212,8 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
   } else {
     query = `*${query}`;
   }
+
+  console.log(query);
 
   return /** @type {Chats} */ (
     await redis.ft.search(index, query, {

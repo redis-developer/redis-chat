@@ -1,5 +1,6 @@
 import { WebSocketServer } from "ws";
 import logger, { logWst } from "../../utils/log";
+import { randomUlid } from "../../utils/uid";
 import session from "../../utils/session";
 import * as ctrl from "./controller";
 
@@ -18,6 +19,7 @@ function onConnection(ws, req) {
     if (!sessionId) {
       return;
     }
+
     /**
      * Sends a response to the WebSocket client.
      *
@@ -37,11 +39,23 @@ function onConnection(ws, req) {
       sessionId: req.session.id,
     });
 
+    let currentChatId = /** @type {string} */ (
+      /** @type {any} */ (req.session).currentChatId
+    );
+
+    if (!currentChatId) {
+      currentChatId = `chat-${randomUlid()}`;
+
+      // @ts-ignore
+      req.session.currentChatId = currentChatId;
+      req.session.save();
+
+      await ctrl.newChat(send, sessionId, currentChatId);
+    }
+
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
       const form = JSON.parse(data.toString());
-      // @ts-ignore
-      const currentChatId = req.session.currentChatId;
 
       switch (form.cmd) {
         case "new_message":
@@ -62,11 +76,13 @@ function onConnection(ws, req) {
           });
           break;
         case "new_chat":
-          const chatId = await ctrl.newChat(send, sessionId);
+          currentChatId = `chat-${randomUlid()}`;
 
           // @ts-ignore
-          req.session.currentChatId = chatId;
+          req.session.currentChatId = currentChatId;
           req.session.save();
+
+          await ctrl.newChat(send, sessionId, currentChatId);
           break;
         case "switch_chat":
           if (!form.chatId) {
@@ -75,11 +91,20 @@ function onConnection(ws, req) {
             });
             return;
           }
+          if (form.chatId === currentChatId) {
+            logger.warn("Attempted to switch to the current chat", {
+              sessionId,
+              chatId: form.chatId,
+            });
+            return;
+          }
+
+          currentChatId = form.chatId;
           // @ts-ignore
-          req.session.currentChatId = form.chatId;
+          req.session.currentChatId = currentChatId;
           req.session.save();
 
-          await ctrl.switchChat(send, sessionId, form.chatId);
+          await ctrl.switchChat(send, sessionId, currentChatId);
           break;
         case "clear_all":
           await ctrl.clearMemory(send, sessionId);
@@ -90,11 +115,7 @@ function onConnection(ws, req) {
       }
     });
 
-    await ctrl.initializeChat(
-      send,
-      sessionId,
-      /** @type {any} */ (req.session).currentChatId,
-    );
+    await ctrl.initializeChat(send, sessionId, currentChatId);
   });
 }
 

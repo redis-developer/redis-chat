@@ -60,7 +60,7 @@ class RedisTransport extends Transport {
       const redis = getClient();
       // Don't await this so the app can keep moving.
       void redis.xAdd(config.log.LOG_STREAM, "*", {
-        service: config.app.FULL_NAME,
+        service: config.app.SERVICE_NAME,
         level,
         message,
         meta: metaStr,
@@ -223,7 +223,7 @@ logWss.on("connection", logWst.onConnection.bind(logWst));
 const logger = winston.createLogger({
   level: config.log.LEVEL.toLowerCase(),
   format: winston.format.json(),
-  defaultMeta: { service: config.app.FULL_NAME },
+  defaultMeta: { service: config.app.SERVICE_NAME },
   transports: [
     new RedisTransport(),
     logWst,
