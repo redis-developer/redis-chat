@@ -39,18 +39,20 @@ function onConnection(ws, req) {
 
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
-      const { cmd, id, message } = JSON.parse(data.toString());
+      const form = JSON.parse(data.toString());
+      // @ts-ignore
+      const currentChatId = req.session.currentChatId;
 
-      switch (cmd) {
-        case "prompt":
-          console.log(message);
-          await ctrl.handleMessage(send, sessionId, message);
-          break;
-        case "regenerate":
-          await ctrl.regenerateMessage(send, sessionId, id);
+      switch (form.cmd) {
+        case "new_message":
+          await ctrl.handleMessage(send, {
+            sessionId,
+            chatId: currentChatId,
+            message: form.message,
+          });
           break;
         case "new_session":
-          await ctrl.clearMessages(send, sessionId);
+          await ctrl.clearMessages(send, sessionId, currentChatId);
           logWst.removeSession(sessionId);
           req.session.destroy(function (err) {
             if (err) {
@@ -59,19 +61,27 @@ function onConnection(ws, req) {
             }
           });
           break;
-        case "clear_session":
-          await ctrl.clearMessages(send, sessionId);
+        case "new_chat":
+          const chatId = await ctrl.newChat(send, sessionId);
+
+          // @ts-ignore
+          req.session.currentChatId = chatId;
+          req.session.save();
           break;
         case "clear_all":
           await ctrl.clearCache(send, sessionId);
           break;
         default:
-          logger.warn("Unknown command received", { cmd, sessionId });
+          logger.warn("Unknown command received", { cmd: form.cmd, sessionId });
           return;
       }
     });
 
-    await ctrl.initializeChat(send, sessionId);
+    await ctrl.initializeChat(
+      send,
+      sessionId,
+      /** @type {any} */ (req.session).currentChatId,
+    );
   });
 }
 

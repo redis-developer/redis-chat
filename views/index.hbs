@@ -1,9 +1,11 @@
-<div
-  hx-ext="ws"
-  ws-connect="/chat"
-  hx-on:htmx:ws-after-message="document.querySelector('main').scrollTo(0, document.querySelector('main').scrollHeight)"
-  class="flex h-screen bg-gray-100"
->
+<div class="flex h-full w-full">
+    {{> sidebar}}
+    <main class="flex-1 flex flex-col h-full w-full bg-white overflow-y-scroll">
+        {{> header}}
+        {{> chat}}
+    </main>
+</div>
+{{!-- <div class="flex h-screen bg-gray-100">
   <!-- Chat Panel -->
   <div class="flex-1 flex flex-col">
     <!-- Header -->
@@ -21,11 +23,11 @@
         </button>
       </form>
       <form class="mr-2" ws-send hx-disabled-elt="this">
-        <input type="hidden" name="cmd" value="clear_session" />
+        <input type="hidden" name="cmd" value="new_thread" />
         <button
           class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
         >
-          Reset Session
+          New Thread
         </button>
       </form>
       <form ws-send hx-disabled-elt="this">
@@ -33,7 +35,7 @@
         <button
           class="bg-red-500 text-white ml-auto px-4 py-2 rounded-md hover:bg-red-600"
         >
-          Reset All
+          Clear All
         </button>
       </form>
     </header>
@@ -66,4 +68,4 @@
       </form>
     </footer>
   </div>
-</div>
+</div> --}}

@@ -9,13 +9,14 @@ import * as view from "./view";
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session to clear messages for.
+ * @param {string} chatId - The ID of the chat session to clear messages for.
  */
-export async function clearMessages(send, sessionId) {
+export async function clearMessages(send, sessionId, chatId) {
   try {
     logger.info(`Clearing messages for session \`${sessionId}\``, {
       sessionId,
     });
-    await store.deleteChatMessages(sessionId);
+    await store.deleteChatMessages(sessionId, chatId);
     send(view.clearMessages());
   } catch (error) {
     logger.error(`Failed to delete messages for session ${sessionId}:`, {
@@ -94,12 +95,13 @@ async function findSimilarPrompt(prompt, sessionId) {
  * Asks the LLM for a response to the given prompt.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat session.
  * @param {string} prompt - The prompt to send to the LLM.
  * @param {string} cacheId - The ID of the cache entry.
  */
-export async function askLlm(sessionId, prompt, cacheId) {
+export async function askLlm(sessionId, chatId, prompt, cacheId) {
   try {
-    const messageHistory = await store.getChatMessages(sessionId);
+    const messageHistory = await store.getChatMessages(sessionId, chatId);
     logger.info(
       `Retrieved ${messageHistory.length} messages from session \`${sessionId}\``,
       {
@@ -239,17 +241,23 @@ export async function askLlm(sessionId, prompt, cacheId) {
  * Handles incoming messages from the client.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
- * @param {string} sessionId - The ID of the chat session.
- * @param {string} prompt - The message received from the client.
+ * @param {Object} params - Parameters containing sessionId and prompt.
+ * @param {string} params.sessionId - The ID of the chat session.
+ * @param {string} params.chatId - The ID of the chat for the message
+ * @param {string} params.message - The message received from the client.
  * @param {boolean} [noCache=false] - If true, skips the cache check and always generates a new response.
  */
-export async function handleMessage(send, sessionId, prompt, noCache = false) {
+export async function handleMessage(
+  send,
+  { sessionId, chatId, message },
+  noCache = false,
+) {
   let botResponseSent = false;
-  const userMessageId = `chat-user-${randomBytes(20)}`;
-  const botId = `chat-bot-${randomBytes(20)}`;
+  const userMessageId = `user-${randomBytes(20)}`;
+  const botId = `bot-${randomBytes(20)}`;
   const userMessage = {
     id: userMessageId,
-    message: prompt,
+    message: message,
     isLocal: true,
   };
 
@@ -262,7 +270,11 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
   try {
     await store.createIndexIfNotExists(sessionId);
 
-    const messageId = await store.addChatMessage(sessionId, userMessage);
+    const messageId = await store.addChatMessage(
+      sessionId,
+      chatId,
+      userMessage,
+    );
 
     logger.info(`User message added to stream for session \`${sessionId}\``, {
       sessionId,
@@ -275,16 +287,11 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
       }),
     );
 
-    send(
-      view.renderMessage({
-        ...response,
-        showRefresh: false,
-      }),
-    );
+    send(view.renderMessage(response));
     botResponseSent = true;
 
     if (!noCache) {
-      const cacheResult = await findSimilarPrompt(prompt, sessionId);
+      const cacheResult = await findSimilarPrompt(message, sessionId);
 
       if (cacheResult) {
         response.message = cacheResult.response;
@@ -292,10 +299,10 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
     }
 
     if (response.message === "...") {
-      response.message = await askLlm(sessionId, prompt, botId);
+      response.message = await askLlm(sessionId, chatId, message, botId);
     }
 
-    response.id = await store.addChatMessage(sessionId, response);
+    response.id = await store.addChatMessage(sessionId, chatId, response);
 
     logger.info(`Bot message added to stream for session \`${sessionId}\``, {
       sessionId,
@@ -326,16 +333,10 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
         view.renderMessage({
           replaceId: botId,
           ...message,
-          showRefresh: false,
         }),
       );
     } else {
-      send(
-        view.renderMessage({
-          ...message,
-          showRefresh: false,
-        }),
-      );
+      send(view.renderMessage(message));
     }
   }
 }
@@ -345,9 +346,10 @@ export async function handleMessage(send, sessionId, prompt, noCache = false) {
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat session.
  * @param {string} entryId - The ID of the message entry to regenerate.
  */
-export async function regenerateMessage(send, sessionId, entryId) {
+export async function regenerateMessage(send, sessionId, chatId, entryId) {
   logger.info(
     `Regenerating message \`${entryId}\` for session \`${sessionId}\``,
     {
@@ -359,9 +361,14 @@ export async function regenerateMessage(send, sessionId, entryId) {
   try {
     const promptMessage = await store.getPreviousChatMessage(
       sessionId,
+      chatId,
       entryId,
     );
-    const responseMessage = await store.getChatMessage(sessionId, entryId);
+    const responseMessage = await store.getChatMessage(
+      sessionId,
+      chatId,
+      entryId,
+    );
 
     if (!(promptMessage && responseMessage)) {
       logger.warn(`No previous message found for ID: ${entryId}`, {
@@ -384,11 +391,10 @@ export async function regenerateMessage(send, sessionId, entryId) {
         id: entryId,
         message: "...",
         isLocal: false,
-        showRefresh: false,
       }),
     );
 
-    const text = await askLlm(sessionId, promptMessage.message, botId);
+    const text = await askLlm(sessionId, chatId, promptMessage.message, botId);
 
     logger.info(`Replacing ${responseMessage.messageKey} with ${text}`, {
       sessionId,
@@ -421,18 +427,66 @@ export async function regenerateMessage(send, sessionId, entryId) {
 }
 
 /**
+ * Creates a new chat session.
+ *
+ * @param {(message: string) => void} send - Method to send responses to the client.
+ * @param {string} sessionId
+ *
+ * @return {Promise<string>} - The ID of the newly created chat session.
+ */
+export async function newChat(send, sessionId) {
+  const newChatId = `chat-${randomBytes(20)}`;
+  logger.info(
+    `Creating new chat session \`${newChatId}\` for session \`${sessionId}\``,
+    {
+      sessionId,
+    },
+  );
+
+  const chats = [
+    {
+      chatId: newChatId,
+      message: "New chat",
+    },
+    ...(await store.getAllChats(sessionId)),
+  ];
+
+  send(
+    view.renderChats({
+      chats,
+      currentChatId: newChatId,
+    }),
+  );
+
+  send(
+    view.clearMessages({
+      placeholder: false,
+    }),
+  );
+
+  return newChatId;
+}
+
+/**
  * Initializes the chat by sending all previous messages to the WebSocket client.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat to initialize.
  */
-export async function initializeChat(send, sessionId) {
+export async function initializeChat(send, sessionId, chatId) {
   try {
     logger.info(`Initializing chat for session \`${sessionId}\``, {
       sessionId,
     });
 
-    const messages = await store.getChatMessages(sessionId);
+    send(
+      view.clearMessages({
+        placeholder: false,
+      }),
+    );
+
+    const messages = await store.getChatMessages(sessionId, chatId);
 
     for (const message of messages) {
       send(
@@ -445,7 +499,31 @@ export async function initializeChat(send, sessionId) {
     }
   } catch (error) {
     logger.error(`Failed to initialize chat for session \`${sessionId}\`:`, {
+      error,
       sessionId,
     });
+  }
+}
+
+/**
+ * Retrieves the chat history for a given session.
+ *
+ * @param {string} sessionId
+ */
+export async function getChatsHistory(sessionId) {
+  try {
+    logger.info(`Initializing chat history for session \`${sessionId}\``, {
+      sessionId,
+    });
+
+    return store.getAllChats(sessionId);
+  } catch (error) {
+    logger.error(
+      `Failed to initialize chat history for session \`${sessionId}\`:`,
+      {
+        error,
+        sessionId,
+      },
+    );
   }
 }

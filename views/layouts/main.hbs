@@ -1,17 +1,36 @@
-<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <title>Redis RAG</title>
-    <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=">
-    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.min.js" integrity="sha384-t4DxZSyQK+0Uv4jzy5B0QyHyWQD2GFURUmxKMBVww9+e2EJ0ei/vCvv7+79z0fkr" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs" crossorigin="anonymous"></script>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.5/dist/htmx.min.js"
+      integrity="sha384-t4DxZSyQK+0Uv4jzy5B0QyHyWQD2GFURUmxKMBVww9+e2EJ0ei/vCvv7+79z0fkr"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2"
+      integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs"
+      crossorigin="anonymous"
+    ></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css"
+    />
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"
+    ></script>
     <link rel="stylesheet" href="/styles.css" />
-    {{#if isDev}}
-    <script src="/dev.js"></script>
-    {{/if}}
+    <script src="/log.js"></script>
+    <script src="/highlight.js"></script>
   </head>
-  <body class="h-screen bg-gray-500" hx-boost="true">
+  <body
+    class="h-screen bg-gray-500"
+    hx-ext="ws"
+    ws-connect="/chat"
+    hx-on:htmx:ws-after-message="document.querySelector('main').scrollTo(0, document.querySelector('main').scrollHeight)"
+    hx-boost="true"
+  >
 
     {{{body}}}
 

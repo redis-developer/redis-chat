@@ -1,0 +1,16 @@
+{{!-- A sidebar that allows creating new threads and switching to past threads --}}
+<nav class="flex flex-col bg-gray-100 h-full w-64 border-r border-gray-200 p-4">
+  <h2 class="text-lg font-semibold mb-4">Redis Chat</h2>
+  <ul class="my-2">
+    <li class="truncate cursor-pointer p-2 rounded hover:bg-gray-200 active:bg-gray-300">
+        <form ws-send hx-disabled-elt="this">
+            <input type="hidden" name="cmd" value="new_chat" />
+            <button type="submit" class="text-gray-600">
+            + New chat
+            </button>
+        </form>
+    </li>
+  </ul>
+  <p class="text-md text-gray-500 my-2">Chats</p>
+  {{> chats}}
+</nav>

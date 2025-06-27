@@ -3,6 +3,7 @@ import config from "../../config";
 import getClient from "../../redis";
 import { embedText, llm } from "../../services/ai/ai";
 import { float32ToBuffer } from "../../utils/convert";
+import { randomBytes } from "../../utils/crypto";
 
 /**
  * An error object
@@ -282,18 +283,23 @@ export async function vss(
  * Adds a chat message to the Redis stream for a given session.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat message.
  * @param {Object} params - The parameters for the chat message.
  * @param {string} params.id - The unique ID for the chat message.
  * @param {string} params.message - The chat message content.
  * @param {boolean} params.isLocal - True if the message is from the local user, false if it's from the bot.
  */
-export async function addChatMessage(sessionId, { id, message, isLocal }) {
+export async function addChatMessage(
+  sessionId,
+  chatId,
+  { id, message, isLocal },
+) {
   const client = getClient(); // Unique ID based on session and timestamp
 
-  const messageKey = `${config.redis.MESSAGE_PREFIX}${sessionId}:${id}`;
+  const messageKey = `${config.redis.MESSAGE_PREFIX}${sessionId}:${chatId}:${id}`;
   await client.set(messageKey, message);
   const streamId = await client.xAdd(
-    `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`,
+    `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${chatId}`,
     "*",
     {
       timestamp: Date.now().toString(), // Store timestamp as string
@@ -309,11 +315,12 @@ export async function addChatMessage(sessionId, { id, message, isLocal }) {
  * Retrieves the message before a specified message ID in a chat session.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat message.
  * @param {string} entryId - The stream entry ID of the message to find the previous message for.
  */
-export async function getPreviousChatMessage(sessionId, entryId) {
+export async function getPreviousChatMessage(sessionId, chatId, entryId) {
   const client = getClient();
-  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${chatId}`;
 
   // Get the message before the specified message ID
   const entries = await client.xRevRange(streamKey, entryId, "-", {
@@ -352,11 +359,12 @@ export async function changeChatMessage(id, newValue) {
  * Retrieves a specific chat message by its entry ID from the Redis stream.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat message.
  * @param {string} entryId - The stream entry ID of the message to retrieve.
  */
-export async function getChatMessage(sessionId, entryId) {
+export async function getChatMessage(sessionId, chatId, entryId) {
   const client = getClient();
-  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${chatId}`;
 
   // Get the specific message by entry ID
   const entries = await client.xRange(streamKey, entryId, entryId);
@@ -380,11 +388,12 @@ export async function getChatMessage(sessionId, entryId) {
  * Retrieves all chat messages from the Redis stream for a given session.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat message.
  * @returns {Promise<Array<{ entryId: string; id: string; timestamp: number; message: string; messageKey: string; isLocal: boolean }>>} - A promise resolving to an array of chat messages.
  */
-export async function getChatMessages(sessionId) {
+export async function getChatMessages(sessionId, chatId) {
   const client = getClient();
-  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${chatId}`;
 
   // '-' means the minimum possible ID, '+' means the maximum possible ID
   const streamEntries = await client.xRange(streamKey, "-", "+");
@@ -408,15 +417,78 @@ export async function getChatMessages(sessionId) {
 }
 
 /**
+ * Retrieves every chat for a given session ID and gets the last user message for that chat.
+ *
+ * @param {string} sessionId - The ID of the session for which to retrieve all chats.
+ *
+ * @returns {Promise<Array<{ id: string; chatId: string; timestamp: number; message: string; messageKey: string; isLocal: boolean }>>} - A promise resolving to an array of chat objects.
+ */
+export async function getAllChats(sessionId) {
+  const client = getClient();
+  const sessionPrefix = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+
+  const streamKeys = await client.keys(`${sessionPrefix}:*`);
+
+  const chats = await Promise.all(
+    streamKeys.map(async (streamKey) => {
+      const streamEntries = await client.xRevRange(streamKey, "+", "-", {
+        COUNT: 2,
+      });
+
+      if (streamEntries.length === 0) {
+        return null; // No messages in this chat
+      }
+
+      for (const entry of streamEntries) {
+        const { id, timestamp, messageKey, isLocal } = entry.message;
+
+        if (isLocal === "true") {
+          // If the last message is from the local user, we return it
+          return {
+            id: id,
+            chatId: streamKey.split(":").pop(),
+            timestamp: parseInt(timestamp, 10),
+            message: await client.get(messageKey),
+            messageKey: messageKey,
+            isLocal: isLocal === "true",
+          };
+        }
+      }
+
+      return null;
+    }),
+  );
+
+  return /** @type {Array<{ id: string; chatId: string; timestamp: number; message: string; messageKey: string; isLocal: boolean }>} */ (
+    chats.filter((chat) => chat !== null)
+  );
+}
+
+/**
+ * Creates a new chat session in Redis.
+ *
+ * @param {string} sessionId - The session for the new chat.
+ *
+ * @returns {string} - The Redis stream key for the new chat session.
+ */
+export function createChat(sessionId) {
+  const id = randomBytes(5);
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${id}`;
+
+  return streamKey;
+}
+
+/**
  * Deletes all chat messages from the Redis stream for a given session.
  *
  * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat message.
  */
-export async function deleteChatMessages(sessionId) {
+export async function deleteChatMessages(sessionId, chatId) {
   const client = getClient();
-  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}`;
+  const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${chatId}`;
 
-  const messages = await getChatMessages(sessionId);
+  const messages = await getChatMessages(sessionId, chatId);
   await client.del(
     [streamKey].concat(
       messages.map((message) => {
