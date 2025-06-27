@@ -2,10 +2,10 @@ import z from "zod";
 
 /**
  * @typedef {Object} MemoryStoreToolResponse
- * @property {string} response - The response to the prompt.
+ * @property {string} response - The response to the question.
  * @property {boolean} storeInUserMemory - Whether the response is suitable for user memory.
  * @property {boolean} storeInSemanticMemory - Whether the response is suitable for semantic memory.
- * @property {string} inferredQuestion - The inferred prompt that can be used to store the response.
+ * @property {string} inferredQuestion - The inferred question that can be used to store the response.
  * @property {string} userMemoryReasoning - Reason for storing the response in user memory.
  * @property {string} semanticMemoryReasoning - Reason for storing the response in semantic memory.
  * @property {number} recommendedTtl - Recommended time-to-live for the stored response in seconds.
@@ -40,13 +40,13 @@ export const questionResponseSchema = z.object({
     .number()
     .default(-1)
     .describe(
-      "If the prompt result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
+      "If the question result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
     ),
 });
 
 export const questionResponseTool = /** @type {import("ai").Tool} */ ({
   description: `
-    Given a prompt, answer the question and also tell me whether there is an inferred prompt with which to store the answer. Your answers can be stored in short-term, user, or semantic memory.
+    Given a question, answer it and indicate whether there is an inferred question with which to store the answer. Your answers can be stored in short-term, user, or semantic memory.
 
     Here is how to determine whether your response should be stored in short-term memory, user memory, or semantic memory:
 

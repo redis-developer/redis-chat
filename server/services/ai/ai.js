@@ -111,7 +111,7 @@ export async function answerPrompt(question, search, messageHistory = []) {
         content: `
             Answer the latest user question to the best of your ability. The following tools are available to you:
 
-            - Call the \`questionResponseTool\` with your response to the prompt and the information about whether it can be stored in memory. Your answers can be stored in:
+            - Call the \`questionResponseTool\` with your response to the question and the information about whether it can be stored in memory. Your answers can be stored in:
                 - **User memory**: If the response is relevant to the user and can help in future interactions across different sessions.
                 - **Semantic memory**: If the response is relevant to all users and can help in future interactions across all sessions.
                 - Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
