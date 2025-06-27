@@ -86,21 +86,21 @@ export async function embedText(text) {
 }
 
 /**
- * Gets a response from the LLM based on the provided prompt.
+ * Gets a response from the LLM based on the provided question.
  *
- * @param {string} prompt - The prompt to send to the LLM.
- * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the prompt.
+ * @param {string} question - The question to send to the LLM.
+ * @param {Array<import("ai").CoreMessage>} [messageHistory=[]] - The chat history to include in the question.
  * @param {(args: z.infer<typeof import("./tools").getMemorySchema>, options: import("ai").ToolExecutionOptions) => PromiseLike<string>} search - The function to execute the memory search tool.
  *
  * @returns {Promise<import("./tools").MemoryStoreToolResponse>} - The response from the LLM, including whether it can be stored in memory and where.
  */
-export async function answerPrompt(prompt, search, messageHistory = []) {
+export async function answerPrompt(question, search, messageHistory = []) {
   let toolResponse = /** @type {import("./tools").MemoryStoreToolResponse} */ ({
     storeInUserMemory: false,
     storeInSemanticMemory: false,
     userMemoryReasoning: "No tool call found or invalid parameters",
     semanticMemoryReasoning: "No tool call found or invalid parameters",
-    inferredQuestion: prompt,
+    inferredQuestion: question,
     recommendedTtl: -1,
   });
   const { toolCalls } = await generateText({
@@ -125,7 +125,7 @@ export async function answerPrompt(prompt, search, messageHistory = []) {
           `,
       },
       ...messageHistory,
-      { role: "user", content: prompt },
+      { role: "user", content: question },
     ],
     tools: {
       questionResponseTool,

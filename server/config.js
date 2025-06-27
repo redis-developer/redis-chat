@@ -48,10 +48,6 @@ const config = {
       process.env.REDIS_SESSION_SECRET || "default_session_secret",
     SESSION_PREFIX: process.env.REDIS_SESSION_PREFIX || "session:",
     CHAT_STREAM_PREFIX: process.env.REDIS_CHAT_STREAM_PREFIX || "chat:",
-    SHORT_TERM_MEMORY_INDEX:
-      process.env.REDIS_SHORT_TERM_MEMORY_INDEX || "idx:short_term_memory",
-    SHORT_TERM_MEMORY_PREFIX:
-      process.env.REDIS_SHORT_TERM_MEMORY_PREFIX || "short_term_memory:",
     USER_MEMORY_INDEX: process.env.REDIS_USER_MEMORY_INDEX || "idx:user_memory",
     USER_MEMORY_PREFIX: process.env.REDIS_USER_MEMORY_PREFIX || "user_memory:",
     SEMANTIC_MEMORY_INDEX:

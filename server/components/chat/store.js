@@ -3,7 +3,7 @@ import config from "../../config";
 import getClient from "../../redis";
 import { embedText, llm } from "../../services/ai/ai";
 import { float32ToBuffer } from "../../utils/convert";
-import { randomBytes } from "../../utils/crypto";
+import { randomUlid } from "../../utils/uid";
 
 /**
  * An error object
@@ -14,7 +14,8 @@ import { randomBytes } from "../../utils/crypto";
  * A chat object
  * @typedef {Object} Chat
  * @property {number} [distance]
- * @property {string} originalPrompt
+ * @property {string} [sessionId]
+ * @property {string} originalQuestion
  * @property {string} inferredQuestion
  * @property {string} reasoning
  * @property {number} recommendedTtl
@@ -65,16 +66,13 @@ export async function haveIndex(name) {
 }
 
 /**
- * Creates a Redis index for chat messages.
- *
- * @param {string} name - The name of the index to create.
- * @param {string} prefix - The prefix for the index.
+ * Creates the Redis indexes for chat messages.
  */
-export async function createIndex(name, prefix) {
+export async function createIndexesIfNotExists() {
   const redis = getClient();
-  await redis.ft.create(
-    name,
-    {
+
+  const semanticSchema =
+    /** @type {import("@redis/search").RediSearchSchema} */ ({
       "$.embedding": {
         type: SCHEMA_FIELD_TYPE.VECTOR,
         TYPE: "FLOAT32",
@@ -83,9 +81,9 @@ export async function createIndex(name, prefix) {
         DISTANCE_METRIC: "L2",
         AS: "embedding",
       },
-      "$.originalPrompt": {
+      "$.originalQuestion": {
         type: SCHEMA_FIELD_TYPE.TEXT,
-        AS: "originalPrompt",
+        AS: "originalQuestion",
       },
       "$.inferredQuestion": {
         type: SCHEMA_FIELD_TYPE.TEXT,
@@ -103,35 +101,42 @@ export async function createIndex(name, prefix) {
         type: SCHEMA_FIELD_TYPE.TEXT,
         AS: "response",
       },
-    },
-    {
-      ON: "JSON",
-      PREFIX: prefix,
-    },
-  );
-}
+    });
 
-/**
- * Creates the CHAT_INDEX if it doesn't exist already
- *
- * @param {string | null} [sessionId=null] - The session ID for which to create the index.
- */
-export async function createIndexIfNotExists(sessionId = null) {
-  const haveSemanticMemoryIndex = await haveIndex(SEMANTIC_MEMORY_INDEX);
+  const userSchema = /** @type {import("@redis/search").RediSearchSchema} */ ({
+    ...semanticSchema,
+    "$.sessionId": {
+      type: SCHEMA_FIELD_TYPE.TAG,
+      AS: "sessionId",
+      SORTABLE: true,
+    },
+  });
 
-  if (!haveSemanticMemoryIndex) {
-    await createIndex(SEMANTIC_MEMORY_INDEX, SEMANTIC_MEMORY_PREFIX);
+  const promises = [];
+  const [haveSemanticIndex, haveUserIndex] = await Promise.all([
+    haveIndex(SEMANTIC_MEMORY_INDEX),
+    haveIndex(USER_MEMORY_INDEX),
+  ]);
+
+  if (!haveSemanticIndex) {
+    promises.push(
+      redis.ft.create(SEMANTIC_MEMORY_INDEX, semanticSchema, {
+        ON: "JSON",
+        PREFIX: SEMANTIC_MEMORY_PREFIX,
+      }),
+    );
   }
 
-  if (sessionId) {
-    const userIndex = getUserMemoryIndex(sessionId);
-    const userPrefix = `${USER_MEMORY_PREFIX}${sessionId}:`;
-    const haveUserIndex = await haveIndex(userIndex);
-
-    if (!haveUserIndex) {
-      await createIndex(userIndex, userPrefix);
-    }
+  if (!haveUserIndex) {
+    promises.push(
+      redis.ft.create(USER_MEMORY_INDEX, userSchema, {
+        ON: "JSON",
+        PREFIX: USER_MEMORY_PREFIX,
+      }),
+    );
   }
+
+  await Promise.all(promises);
 }
 
 /**
@@ -148,21 +153,20 @@ export async function createIndexIfNotExists(sessionId = null) {
  */
 export async function storePrompt(
   id,
-  { originalPrompt, inferredQuestion, reasoning, response, recommendedTtl },
+  { originalQuestion, inferredQuestion, reasoning, response, recommendedTtl },
   { sessionId, userMemory, semanticMemory },
 ) {
   const redis = getClient();
   const embedding = await embedText(inferredQuestion);
-  let CHAT_PREFIX = config.redis.SEMANTIC_MEMORY_PREFIX;
+  let CHAT_PREFIX = SEMANTIC_MEMORY_PREFIX;
 
   if (userMemory) {
-    CHAT_PREFIX = `${config.redis.USER_MEMORY_PREFIX}${sessionId}:`;
+    CHAT_PREFIX = USER_MEMORY_PREFIX;
   }
 
   const fullId = `${CHAT_PREFIX}${id}`;
-
-  await redis.json.set(fullId, "$", {
-    originalPrompt,
+  const chat = /** @type {Chat} */ ({
+    originalQuestion,
     embedding,
     inferredQuestion,
     reasoning,
@@ -170,20 +174,19 @@ export async function storePrompt(
     response,
   });
 
+  if (userMemory) {
+    chat.sessionId = sessionId;
+  }
+
+  await redis.json.set(fullId, "$", chat);
+
   if (recommendedTtl > 0) {
     await redis.expire(fullId, recommendedTtl);
   }
 
   return /** @type {ChatDocument} */ {
     id,
-    value: {
-      originalPrompt,
-      embedding,
-      inferredQuestion,
-      reasoning,
-      recommendedTtl,
-      response,
-    },
+    value: chat,
   };
 }
 
@@ -193,32 +196,37 @@ export async function storePrompt(
  * @param {number[]} embedding - The embedding vector to search for.
  * @param {string} index - The index to search in (short-term, user, or semantic memory).
  * @param {Object} options - Options for the lookup.
+ * @param {string} [options.sessionId] - The session ID for the chat.
  * @param {number} [options.count=1] - The number of results to return.
  */
-async function lookup(embedding, index, { count = 1 } = {}) {
+async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
   const redis = getClient();
+  let query = `=>[KNN ${count} @embedding $BLOB AS distance]`;
+
+  if (sessionId) {
+    query = `@sessionId:{${sessionId}}${query}`;
+  } else {
+    query = `*${query}`;
+  }
+
   return /** @type {Chats} */ (
-    await redis.ft.search(
-      index,
-      `*=>[KNN ${count} @embedding $BLOB AS distance]`,
-      {
-        PARAMS: {
-          BLOB: float32ToBuffer(embedding),
-        },
-        RETURN: [
-          "distance",
-          "originalPrompt",
-          "reasoning",
-          "inferredQuestion",
-          "recommendedTtl",
-          "response",
-        ],
-        SORTBY: {
-          BY: /** @type {`${'@' | '$.'}${string}`} */ ("distance"),
-        },
-        DIALECT: 2,
+    await redis.ft.search(index, query, {
+      PARAMS: {
+        BLOB: float32ToBuffer(embedding),
       },
-    )
+      RETURN: [
+        "distance",
+        "originalQuestion",
+        "reasoning",
+        "inferredQuestion",
+        "recommendedTtl",
+        "response",
+      ],
+      SORTBY: {
+        BY: /** @type {`${'@' | '$.'}${string}`} */ ("distance"),
+      },
+      DIALECT: 2,
+    })
   );
 }
 
@@ -246,7 +254,8 @@ export async function vss(
   let documents = [];
 
   if (userMemory && sessionId) {
-    const result = await lookup(embedding, getUserMemoryIndex(sessionId), {
+    const result = await lookup(embedding, USER_MEMORY_INDEX, {
+      sessionId,
       count,
     });
 
@@ -254,7 +263,7 @@ export async function vss(
   }
 
   if (semanticMemory) {
-    const result = await lookup(embedding, config.redis.SEMANTIC_MEMORY_INDEX, {
+    const result = await lookup(embedding, SEMANTIC_MEMORY_INDEX, {
       count,
     });
 
@@ -466,7 +475,7 @@ export async function getAllChats(sessionId) {
  * @returns {string} - The Redis stream key for the new chat session.
  */
 export function createChat(sessionId) {
-  const id = randomBytes(5);
+  const id = randomUlid();
   const streamKey = `${config.redis.CHAT_STREAM_PREFIX}${sessionId}:${id}`;
 
   return streamKey;
@@ -502,16 +511,16 @@ export async function deleteKeys() {
   const indexes = await redis.ft._list();
 
   for (const index of indexes) {
-    if (index.includes(config.redis.USER_MEMORY_INDEX)) {
+    if (index.includes(USER_MEMORY_INDEX)) {
       await redis.ft.dropIndex(index);
-    } else if (index.includes(config.redis.SEMANTIC_MEMORY_INDEX)) {
+    } else if (index.includes(SEMANTIC_MEMORY_INDEX)) {
       await redis.ft.dropIndex(index);
     }
   }
 
   await client.del([
-    ...(await client.keys(`${config.redis.USER_MEMORY_PREFIX}*`)),
-    ...(await client.keys(`${config.redis.SEMANTIC_MEMORY_PREFIX}*`)),
+    ...(await client.keys(`${USER_MEMORY_PREFIX}*`)),
+    ...(await client.keys(`${SEMANTIC_MEMORY_PREFIX}*`)),
     ...(await client.keys(`${config.redis.CHAT_STREAM_PREFIX}*`)),
     ...(await client.keys(`${config.redis.SESSION_PREFIX}*`)),
     ...(await client.keys(`${config.redis.MESSAGE_PREFIX}*`)),
@@ -519,5 +528,5 @@ export async function deleteKeys() {
     config.log.LOG_STREAM,
   ]);
 
-  await createIndexIfNotExists();
+  await createIndexesIfNotExists();
 }

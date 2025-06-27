@@ -1,5 +1,5 @@
 import { answerPrompt } from "../../services/ai/ai";
-import { randomBytes } from "../../utils/crypto";
+import { randomUlid } from "../../utils/uid";
 import logger from "../../utils/log";
 import * as store from "./store";
 import * as view from "./view";
@@ -50,18 +50,18 @@ export async function clearMemory(send, sessionId) {
 }
 
 /**
- * Checks memory for a response to the given prompt.
+ * Checks memory for a response to the given question.
  * If a response is found, it returns the response along with
- * the inferred prompt and reasoning.
+ * the inferred question and reasoning.
  *
- * @param {string} prompt - The prompt to check in memory.
+ * @param {string} question - The question to check in memory.
  * @param {string} sessionId - The ID of the chat session.
  *
  * @return {Promise<import("./store").Chat | undefined>} - An object containing the stored response and metadata,
  */
-async function findSimilarPrompt(prompt, sessionId) {
+async function searchMemory(question, sessionId) {
   try {
-    const { total, documents } = await store.vss(prompt, {
+    const { total, documents } = await store.vss(question, {
       sessionId,
       semanticMemory: true,
       userMemory: true,
@@ -76,7 +76,7 @@ async function findSimilarPrompt(prompt, sessionId) {
       return {
         response: result.response,
         embedding: result.embedding,
-        originalPrompt: result.originalPrompt,
+        originalQuestion: result.originalQuestion,
         inferredQuestion: result.inferredQuestion,
         reasoning: result.reasoning,
         recommendedTtl: result.recommendedTtl,
@@ -96,10 +96,10 @@ async function findSimilarPrompt(prompt, sessionId) {
  *
  * @param {string} sessionId - The ID of the chat session.
  * @param {string} chatId - The ID of the chat session.
- * @param {string} prompt - The prompt to send to the LLM.
+ * @param {string} question - The question to send to the LLM.
  * @param {string} storeId - The ID of the stored entry.
  */
-export async function askLlm(sessionId, chatId, prompt, storeId) {
+export async function askLlm(sessionId, chatId, question, storeId) {
   try {
     const messageHistory = await store.getChatMessages(sessionId, chatId);
     logger.info(
@@ -109,23 +109,23 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
       },
     );
 
-    logger.info(`Asking the LLM: ${prompt}`, {
+    logger.info(`Asking the LLM: ${question}`, {
       sessionId,
     });
     const result = await answerPrompt(
-      prompt,
-      async ({ question, semanticMemory, userMemory }) => {
+      question,
+      async ({ question: q, semanticMemory, userMemory }) => {
         if (userMemory) {
-          logger.info(`Searching user memory for question: ${question}`, {
+          logger.info(`Searching user memory for question: ${q}`, {
             sessionId,
           });
         } else {
-          logger.info(`Searching semantic memory for question: ${question}`, {
+          logger.info(`Searching semantic memory for question: ${q}`, {
             sessionId,
           });
         }
 
-        const results = await store.vss(question, {
+        const results = await store.vss(q, {
           semanticMemory,
           userMemory,
           sessionId,
@@ -164,7 +164,7 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
         : result.semanticMemoryReasoning;
       const logMeta = {
         sessionId,
-        originalPrompt: prompt,
+        originalQuestion: question,
         location: userMemory ? "user memory" : "semantic memory",
         inferredQuestion: result.inferredQuestion,
         reasoning: result.userMemoryReasoning,
@@ -179,12 +179,12 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
 
       if (result.storeInUserMemory) {
         logger.info(
-          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in user memory`,
+          `LLM wants to store "${question}" as "${result.inferredQuestion}" in user memory`,
           logMeta,
         );
       } else if (result.storeInSemanticMemory) {
         logger.info(
-          `LLM wants to store "${prompt}" as "${result.inferredQuestion}" in semantic memory`,
+          `LLM wants to store "${question}" as "${result.inferredQuestion}" in semantic memory`,
           logMeta,
         );
       }
@@ -200,7 +200,7 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
         await store.storePrompt(
           storeId,
           {
-            originalPrompt: prompt,
+            originalQuestion: question,
             inferredQuestion: result.inferredQuestion,
             response: result.response,
             reasoning,
@@ -216,7 +216,7 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
     } else {
       logger.info(`Unable to store "${result.inferredQuestion}" in memory`, {
         sessionId,
-        originalPrompt: prompt,
+        originalQuestion: question,
         inferredQuestion: result.inferredQuestion,
         userMemoryReasoning: result.userMemoryReasoning,
         semanticMemoryReasoning: result.semanticMemoryReasoning,
@@ -225,10 +225,10 @@ export async function askLlm(sessionId, chatId, prompt, storeId) {
 
     return result.response;
   } catch (error) {
-    logger.error(`Failed to ask LLM \`${prompt}\`:`, {
+    logger.error(`Failed to ask LLM \`${question}\`:`, {
       error,
       sessionId,
-      prompt,
+      prompt: question,
     });
     throw error;
   }
@@ -250,8 +250,8 @@ export async function handleMessage(
   skipMemory = false,
 ) {
   let botResponseSent = false;
-  const userMessageId = `user-${randomBytes(20)}`;
-  const botId = `bot-${randomBytes(20)}`;
+  const userMessageId = `user-${randomUlid()}`;
+  const botId = `bot-${randomUlid()}`;
   const userMessage = {
     id: userMessageId,
     message: message,
@@ -265,7 +265,7 @@ export async function handleMessage(
   };
 
   try {
-    await store.createIndexIfNotExists(sessionId);
+    await store.createIndexesIfNotExists();
 
     const messageId = await store.addChatMessage(
       sessionId,
@@ -288,7 +288,7 @@ export async function handleMessage(
     botResponseSent = true;
 
     if (!skipMemory) {
-      const memoryResult = await findSimilarPrompt(message, sessionId);
+      const memoryResult = await searchMemory(message, sessionId);
 
       if (memoryResult) {
         response.message = memoryResult.response;
@@ -354,7 +354,7 @@ export async function regenerateMessage(send, sessionId, chatId, entryId) {
     },
   );
 
-  const botId = `chat-bot-${randomBytes(20)}`;
+  const botId = `chat-bot-${randomUlid()}`;
   try {
     const promptMessage = await store.getPreviousChatMessage(
       sessionId,
@@ -432,7 +432,7 @@ export async function regenerateMessage(send, sessionId, chatId, entryId) {
  * @return {Promise<string>} - The ID of the newly created chat session.
  */
 export async function newChat(send, sessionId) {
-  const newChatId = `chat-${randomBytes(20)}`;
+  const newChatId = `chat-${randomUlid()}`;
   logger.info(
     `Creating new chat session \`${newChatId}\` for session \`${sessionId}\``,
     {
