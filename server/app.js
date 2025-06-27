@@ -33,7 +33,7 @@ app.get("/", async (req, res) => {
   const sessionId = req.session.id;
   // @ts-ignore
   const currentChatId = req.session.currentChatId;
-  const chats = await ctrl.getChatsHistory(sessionId);
+  const chats = await ctrl.getAllChats(sessionId);
   res.render("index", {
     sessionId,
     currentChatId,

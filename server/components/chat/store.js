@@ -41,15 +41,6 @@ const {
 } = config.redis;
 
 /**
- * Generates a Redis index name for user memory based on the session ID.
- *
- * @param {string} sessionId - The session ID for which to generate the index name.
- */
-export function getUserMemoryIndex(sessionId) {
-  return `${USER_MEMORY_INDEX}-${sessionId}`;
-}
-
-/**
  * Checks if the index already exists in Redis
  *
  * @param {string} name - The name of the index to check for existence.
@@ -208,12 +199,10 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
   let query = `=>[KNN ${count} @embedding $BLOB AS distance]`;
 
   if (sessionId) {
-    query = `@sessionId:{${sessionId}}${query}`;
+    query = `@sessionId:{"${sessionId}"}${query}`;
   } else {
     query = `*${query}`;
   }
-
-  console.log(query);
 
   return /** @type {Chats} */ (
     await redis.ft.search(index, query, {
@@ -239,7 +228,7 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
 /**
  * Searches for similar chat messages based on the provided prompt.
  *
- * @param {string} prompt - The prompt to search for similar chat messages.
+ * @param {string} question - The prompt to search for similar chat messages.
  * @param {Object} memory - Memory options for the search.
  * @param {string} [memory.sessionId] - The session ID for the chat.
  * @param {boolean} [memory.userMemory=false] - Whether to search in user memory.
@@ -248,13 +237,12 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
  * @param {number} [options.count=3] - The number of results to return.
  * @param {number} [options.maxDistance=0.5] - The maximum distance for similarity.
  */
-export async function vss(
-  prompt,
+export async function search(
+  question,
   { sessionId, userMemory, semanticMemory } = {},
   { count = 1, maxDistance = 0.5 } = {},
 ) {
-  const redis = getClient();
-  const embedding = await embedText(prompt);
+  const embedding = await embedText(question);
 
   /** @type {ChatDocument[]} */
   let documents = [];
@@ -358,7 +346,7 @@ export async function getPreviousChatMessage(sessionId, chatId, entryId) {
  * @param {string} id - The unique ID of the chat message to change.
  * @param {string} newValue - The new content for the chat message.
  */
-export async function changeChatMessage(id, newValue) {
+export async function editChatMessage(id, newValue) {
   const client = getClient();
 
   await client.set(id, newValue);
@@ -510,7 +498,7 @@ export async function deleteChatMessages(sessionId, chatId) {
 /**
  * Flushes all data in Redis.
  */
-export async function deleteKeys() {
+export async function deleteAll() {
   const client = getClient();
 
   const redis = getClient();

@@ -11,7 +11,7 @@ import * as view from "./view";
  * @param {string} sessionId - The ID of the chat session to clear messages for.
  * @param {string} chatId - The ID of the chat session to clear messages for.
  */
-export async function clearMessages(send, sessionId, chatId) {
+export async function clearChat(send, sessionId, chatId) {
   try {
     logger.info(`Clearing messages for session \`${sessionId}\``, {
       sessionId,
@@ -38,7 +38,7 @@ export async function clearMemory(send, sessionId) {
     logger.info("Clearing Redis", {
       sessionId,
     });
-    await store.deleteKeys();
+    await store.deleteAll();
     send(view.clearMessages());
   } catch (error) {
     logger.error("Failed to clear memory:", {
@@ -64,7 +64,7 @@ async function searchMemory(question, sessionId) {
     logger.info(`Searching semantic memory for question: ${question}`, {
       sessionId,
     });
-    const { total, documents } = await store.vss(question, {
+    const { total, documents } = await store.search(question, {
       sessionId,
       semanticMemory: true,
     });
@@ -101,7 +101,7 @@ async function searchMemory(question, sessionId) {
  * @param {string} question - The question to send to the LLM.
  * @param {string} storeId - The ID of the stored entry.
  */
-export async function askLlm(sessionId, chatId, question, storeId) {
+export async function ask(sessionId, chatId, question, storeId) {
   try {
     const messageHistory = await store.getChatMessages(sessionId, chatId);
     logger.info(
@@ -121,7 +121,7 @@ export async function askLlm(sessionId, chatId, question, storeId) {
           sessionId,
         });
 
-        const results = await store.vss(q, {
+        const results = await store.search(q, {
           userMemory: true,
           sessionId,
         });
@@ -142,6 +142,10 @@ export async function askLlm(sessionId, chatId, question, storeId) {
       })),
     );
 
+    logger.info(`LLM response received for question: ${question}`, {
+      sessionId,
+    });
+
     if (result.storeInSemanticMemory || result.storeInUserMemory) {
       const semanticMemory = result.storeInSemanticMemory;
       const userMemory = result.storeInUserMemory;
@@ -157,23 +161,30 @@ export async function askLlm(sessionId, chatId, question, storeId) {
         recommendedTtl: result.recommendedTtl,
       };
 
-      const existing = await store.vss(result.inferredQuestion, {
-        semanticMemory,
-        userMemory,
-        sessionId,
-      });
-
-      if (result.storeInUserMemory) {
+      if (userMemory) {
         logger.info(
           `LLM wants to store "${question}" as "${result.inferredQuestion}" in user memory`,
           logMeta,
         );
-      } else if (result.storeInSemanticMemory) {
+      } else if (semanticMemory) {
         logger.info(
           `LLM wants to store "${question}" as "${result.inferredQuestion}" in semantic memory`,
           logMeta,
         );
       }
+
+      logger.info(
+        `Searching memory for existing question "${result.inferredQuestion}"`,
+        {
+          sessionId,
+        },
+      );
+
+      const existing = await store.search(result.inferredQuestion, {
+        semanticMemory,
+        userMemory,
+        sessionId,
+      });
 
       if (existing.total > 0) {
         logger.info(
@@ -199,6 +210,12 @@ export async function askLlm(sessionId, chatId, question, storeId) {
           },
         );
       } else {
+        logger.info(
+          `Existing question not found, storing new question "${result.inferredQuestion}" in memory`,
+          {
+            sessionId,
+          },
+        );
         await store.storeQuestion(
           storeId,
           {
@@ -216,13 +233,16 @@ export async function askLlm(sessionId, chatId, question, storeId) {
         );
       }
     } else {
-      logger.info(`Unable to store "${result.inferredQuestion}" in memory`, {
-        sessionId,
-        originalQuestion: question,
-        inferredQuestion: result.inferredQuestion,
-        userMemoryReasoning: result.userMemoryReasoning,
-        semanticMemoryReasoning: result.semanticMemoryReasoning,
-      });
+      logger.info(
+        `LLM doesn't want to store "${result.inferredQuestion}" in memory`,
+        {
+          sessionId,
+          originalQuestion: question,
+          inferredQuestion: result.inferredQuestion,
+          userMemoryReasoning: result.userMemoryReasoning,
+          semanticMemoryReasoning: result.semanticMemoryReasoning,
+        },
+      );
     }
 
     return result.response;
@@ -237,7 +257,7 @@ export async function askLlm(sessionId, chatId, question, storeId) {
 }
 
 /**
- * Handles incoming messages from the client.
+ * Handles incoming chat messages from the client.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
  * @param {Object} params - Parameters containing sessionId and prompt.
@@ -246,7 +266,7 @@ export async function askLlm(sessionId, chatId, question, storeId) {
  * @param {string} params.message - The message received from the client.
  * @param {boolean} [skipMemory=false] - If true, skips the memory check and always generates a new response.
  */
-export async function handleMessage(
+export async function processChat(
   send,
   { sessionId, chatId, message },
   skipMemory = false,
@@ -298,7 +318,7 @@ export async function handleMessage(
     }
 
     if (response.message === "...") {
-      response.message = await askLlm(sessionId, chatId, message, botId);
+      response.message = await ask(sessionId, chatId, message, botId);
     }
 
     response.id = await store.addChatMessage(sessionId, chatId, response);
@@ -341,91 +361,6 @@ export async function handleMessage(
 }
 
 /**
- * Regenerates a message in the chat session.
- *
- * @param {(message: string) => void} send - Method to send responses to the client.
- * @param {string} sessionId - The ID of the chat session.
- * @param {string} chatId - The ID of the chat session.
- * @param {string} entryId - The ID of the message entry to regenerate.
- */
-export async function regenerateMessage(send, sessionId, chatId, entryId) {
-  logger.info(
-    `Regenerating message \`${entryId}\` for session \`${sessionId}\``,
-    {
-      sessionId,
-    },
-  );
-
-  const botId = `chat-bot-${randomUlid()}`;
-  try {
-    const promptMessage = await store.getPreviousChatMessage(
-      sessionId,
-      chatId,
-      entryId,
-    );
-    const responseMessage = await store.getChatMessage(
-      sessionId,
-      chatId,
-      entryId,
-    );
-
-    if (!(promptMessage && responseMessage)) {
-      logger.warn(`No previous message found for ID: ${entryId}`, {
-        sessionId,
-      });
-
-      const response = view.renderMessage({
-        replaceId: entryId,
-        id: entryId,
-        message: "No previous message found to regenerate.",
-        isLocal: false,
-      });
-      send(response);
-      return response;
-    }
-
-    send(
-      view.renderMessage({
-        replaceId: entryId,
-        id: entryId,
-        message: "...",
-        isLocal: false,
-      }),
-    );
-
-    const text = await askLlm(sessionId, chatId, promptMessage.message, botId);
-
-    logger.info(`Replacing ${responseMessage.messageKey} with ${text}`, {
-      sessionId,
-    });
-
-    await store.changeChatMessage(responseMessage.messageKey, text);
-    const response = view.renderMessage({
-      replaceId: entryId,
-      id: entryId,
-      message: text,
-      isLocal: false,
-    });
-    send(response);
-
-    return response;
-  } catch (error) {
-    logger.error("Error regenerating message:", {
-      error,
-      sessionId,
-    });
-    const response = view.renderMessage({
-      replaceId: entryId,
-      id: entryId,
-      message: "An error occurred while regenerating the message.",
-      isLocal: false,
-    });
-    send(response);
-    return response;
-  }
-}
-
-/**
  * Creates a new chat session.
  *
  * @param {(message: string) => void} send - Method to send responses to the client.
@@ -458,7 +393,7 @@ export async function newChat(send, sessionId, newChatId) {
 
     send(
       view.clearMessages({
-        placeholder: false,
+        placeholder: true,
       }),
     );
   } catch (error) {
@@ -534,13 +469,14 @@ export async function initializeChat(send, sessionId, chatId) {
       sessionId,
     });
 
+    const messages = await store.getChatMessages(sessionId, chatId);
+    const placeholder = messages.length === 0;
+
     send(
       view.clearMessages({
-        placeholder: false,
+        placeholder,
       }),
     );
-
-    const messages = await store.getChatMessages(sessionId, chatId);
 
     for (const message of messages) {
       send(
@@ -564,7 +500,7 @@ export async function initializeChat(send, sessionId, chatId) {
  *
  * @param {string} sessionId
  */
-export async function getChatsHistory(sessionId) {
+export async function getAllChats(sessionId) {
   try {
     logger.info(`Initializing chat history for session \`${sessionId}\``, {
       sessionId,

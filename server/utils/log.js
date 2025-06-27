@@ -209,8 +209,8 @@ class WebsocketTransport extends Transport {
       ws.on("close", unsubscribe);
 
       send({
-        level: "info",
-        message: "WebSocket connection established",
+        level: "debug",
+        message: "Logging websocket connection established",
       });
     });
   }

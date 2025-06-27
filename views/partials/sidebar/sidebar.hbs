@@ -13,4 +13,24 @@
   </ul>
   <p class="text-md text-gray-500 my-2">Chats</p>
   {{> sidebar/chats}}
+
+  <div class="grow"></div>
+  <ul>
+      <li class="text-xs text-gray-500 cursor-pointer">
+          <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
+              <input type="hidden" name="cmd" value="new_session" />
+              <button type="submit" class="block w-full p-2 text-left text-gray-600 hover:bg-gray-200 active:bg-gray-300">
+                  + New session
+              </button>
+          </form>
+      </li>
+      <li class="text-xs text-gray-500 cursor-pointer">
+          <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
+              <input type="hidden" name="cmd" value="clear_all" />
+              <button type="submit" class="block w-full p-2 text-left text-gray-600 hover:bg-gray-200 active:bg-gray-300">
+                  🗑 Reset all
+              </button>
+          </form>
+      </li>
+  </ul>
 </nav>

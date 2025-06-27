@@ -35,7 +35,7 @@ function onConnection(ws, req) {
       }
     };
 
-    logger.debug("Socket connection established", {
+    logger.debug("Chat websocket connection established", {
       sessionId: req.session.id,
     });
 
@@ -59,14 +59,13 @@ function onConnection(ws, req) {
 
       switch (form.cmd) {
         case "new_message":
-          await ctrl.handleMessage(send, {
+          await ctrl.processChat(send, {
             sessionId,
             chatId: currentChatId,
             message: form.message,
           });
           break;
         case "new_session":
-          await ctrl.clearMessages(send, sessionId, currentChatId);
           logWst.removeSession(sessionId);
           req.session.destroy(function (err) {
             if (err) {
