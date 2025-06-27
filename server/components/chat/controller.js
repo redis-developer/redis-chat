@@ -432,36 +432,95 @@ export async function regenerateMessage(send, sessionId, chatId, entryId) {
  * @return {Promise<string>} - The ID of the newly created chat session.
  */
 export async function newChat(send, sessionId) {
-  const newChatId = `chat-${randomUlid()}`;
-  logger.info(
-    `Creating new chat session \`${newChatId}\` for session \`${sessionId}\``,
-    {
+  try {
+    const newChatId = `chat-${randomUlid()}`;
+    logger.info(
+      `Creating new chat session \`${newChatId}\` for session \`${sessionId}\``,
+      {
+        sessionId,
+      },
+    );
+
+    const chats = [
+      {
+        chatId: newChatId,
+        message: "New chat",
+      },
+      ...(await store.getAllChats(sessionId)),
+    ];
+
+    send(
+      view.renderChats({
+        chats,
+        currentChatId: newChatId,
+      }),
+    );
+
+    send(
+      view.clearMessages({
+        placeholder: false,
+      }),
+    );
+
+    return newChatId;
+  } catch (error) {
+    logger.error(`Failed to create new chat for session \`${sessionId}\`:`, {
+      error,
       sessionId,
-    },
-  );
+    });
+    throw error;
+  }
+}
 
-  const chats = [
-    {
-      chatId: newChatId,
-      message: "New chat",
-    },
-    ...(await store.getAllChats(sessionId)),
-  ];
+/**
+ * Switches the current chat session to a different chat.
+ *
+ * @param {(message: string) => void} send - Method to send responses to the client.
+ * @param {string} sessionId - The ID of the chat session.
+ * @param {string} chatId - The ID of the chat to switch to.
+ */
+export async function switchChat(send, sessionId, chatId) {
+  try {
+    logger.info(
+      `Switching to chat \`${chatId}\` for session \`${sessionId}\``,
+      {
+        sessionId,
+      },
+    );
 
-  send(
-    view.renderChats({
-      chats,
-      currentChatId: newChatId,
-    }),
-  );
+    const chats = await store.getAllChats(sessionId);
 
-  send(
-    view.clearMessages({
-      placeholder: false,
-    }),
-  );
+    send(
+      view.renderChats({
+        chats,
+        currentChatId: chatId,
+      }),
+    );
 
-  return newChatId;
+    send(
+      view.clearMessages({
+        placeholder: false,
+      }),
+    );
+
+    const messages = await store.getChatMessages(sessionId, chatId);
+
+    for (const message of messages) {
+      send(
+        view.renderMessage({
+          id: message.entryId,
+          message: message.message,
+          isLocal: message.isLocal,
+        }),
+      );
+    }
+  } catch (error) {
+    logger.error(`Failed to switch chat for session \`${sessionId}\`:`, {
+      error,
+      sessionId,
+    });
+    throw error;
+  }
 }
 
 /**

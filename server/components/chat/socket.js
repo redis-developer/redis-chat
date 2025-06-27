@@ -68,6 +68,19 @@ function onConnection(ws, req) {
           req.session.currentChatId = chatId;
           req.session.save();
           break;
+        case "switch_chat":
+          if (!form.chatId) {
+            logger.warn("No chatId provided for switch_chat command", {
+              sessionId,
+            });
+            return;
+          }
+          // @ts-ignore
+          req.session.currentChatId = form.chatId;
+          req.session.save();
+
+          await ctrl.switchChat(send, sessionId, form.chatId);
+          break;
         case "clear_all":
           await ctrl.clearMemory(send, sessionId);
           break;

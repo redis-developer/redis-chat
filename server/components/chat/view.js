@@ -30,13 +30,13 @@ Handlebars.registerHelper("isEqual", isEqual);
 
 const viewsPath = path.join(process.cwd(), "./views/partials");
 const messagesTemplate = Handlebars.compile(
-  fs.readFileSync(path.join(viewsPath, "messages.hbs"), "utf8"),
+  fs.readFileSync(path.join(viewsPath, "chat/messages.hbs"), "utf8"),
 );
 const messageTemplate = Handlebars.compile(
-  fs.readFileSync(path.join(viewsPath, "message.hbs"), "utf8"),
+  fs.readFileSync(path.join(viewsPath, "chat/message.hbs"), "utf8"),
 );
 const chatsTemplate = Handlebars.compile(
-  fs.readFileSync(path.join(viewsPath, "chats.hbs"), "utf8"),
+  fs.readFileSync(path.join(viewsPath, "sidebar/chats.hbs"), "utf8"),
 );
 
 /**
