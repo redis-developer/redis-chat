@@ -199,8 +199,10 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
   let query = `=>[KNN ${count} @embedding $BLOB AS distance]`;
 
   if (sessionId) {
+    // @sessionId:{"aoeuidhtns"}=>[KNN 1 @embedding $BLOB AS distance]
     query = `@sessionId:{"${sessionId}"}${query}`;
   } else {
+    // *=>[KNN 1 @embedding $BLOB AS distance]
     query = `*${query}`;
   }
 
