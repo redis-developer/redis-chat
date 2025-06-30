@@ -242,7 +242,7 @@ async function lookup(embedding, index, { sessionId, count = 1 } = {}) {
 export async function search(
   question,
   { sessionId, userMemory, semanticMemory } = {},
-  { count = 1, maxDistance = 0.5 } = {},
+  { count = 1, maxDistance = 0.4 } = {},
 ) {
   const embedding = await embedText(question);
 
