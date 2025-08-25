@@ -29,6 +29,8 @@ export interface WorkingMemoryModelOptions {
   vectorDimensions?: number;
   createUid?(): string;
   embed?(text: string): Promise<number[]>;
+  distanceThreshold?: number;
+  topK?: number;
 }
 
 export class WorkingMemoryModel {
@@ -82,6 +84,8 @@ export class WorkingMemoryModel {
         embed: async (text: string) => {
           throw new Error("You must provide an embed function");
         },
+        distanceThreshold: 0.4,
+        topK: 1,
       } as WorkingMemoryModelOptions,
       options,
     );
@@ -121,15 +125,12 @@ export class WorkingMemoryModel {
     this.semanticMemoryModel = semanticMemoryModel;
   }
 
-  async search(
-    query: string,
-    topK: number = 5,
-  ): Promise<(WorkingMemoryEntry & WithDistance)[]> {
+  async search(query: string): Promise<(WorkingMemoryEntry & WithDistance)[]> {
     const [semanticResults, episodicMemoryResults, longTermResults] =
       await Promise.all([
-        this.semanticMemoryModel.search(query, topK),
-        this.episodicMemoryModel.search(query, topK),
-        this.longTermMemoryModel.search(query, topK),
+        this.semanticMemoryModel.search(query),
+        this.episodicMemoryModel.search(query),
+        this.longTermMemoryModel.search(query),
       ]);
 
     const merged = [
@@ -154,11 +155,11 @@ export class WorkingMemoryModel {
     ];
     merged.sort((a, b) => a.distance - b.distance);
 
-    return merged.slice(0, topK);
+    return merged;
   }
 
-  async searchSemanticMemory(query: string, topK: number = 5) {
-    return this.semanticMemoryModel.search(query, topK);
+  async searchSemanticMemory(query: string) {
+    return this.semanticMemoryModel.search(query);
   }
 
   async addSemanticMemory(question: string, answer: string, ttl?: number) {
@@ -182,8 +183,8 @@ export class WorkingMemoryModel {
     return this.episodicMemoryModel.update(chatId, summary, ttl);
   }
 
-  async searchEpisodicMemory(query: string, topK: number = 5) {
-    return this.episodicMemoryModel.search(query, topK);
+  async searchEpisodicMemory(query: string) {
+    return this.episodicMemoryModel.search(query);
   }
 
   async addLongTermMemory(question: string, answer: string, ttl?: number) {

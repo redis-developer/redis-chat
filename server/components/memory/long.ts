@@ -15,6 +15,8 @@ export interface LongTermMemoryModelOptions {
   vectorDimensions?: number;
   createUid?(): string;
   embed?(text: string): Promise<number[]>;
+  distanceThreshold?: number;
+  topK?: number;
 }
 
 export class LongTermMemoryModel {
@@ -95,6 +97,8 @@ export class LongTermMemoryModel {
         embed: async (text: string) => {
           throw new Error("You must provide an embed function");
         },
+        distanceThreshold: 0.4,
+        topK: 1,
       } as LongTermMemoryModelOptions,
       options,
     );
@@ -124,15 +128,12 @@ export class LongTermMemoryModel {
     this.options = options;
   }
 
-  async search(
-    query: string,
-    topK: number = 5,
-  ): Promise<(LongTermMemoryEntry & WithDistance)[]> {
+  async search(query: string): Promise<(LongTermMemoryEntry & WithDistance)[]> {
     const embedding = await this.options.embed(query);
 
     const results = await this.db.ft.search(
       LongTermMemoryModel.Index(this.userId),
-      `*=>[KNN ${topK} @embedding $BLOB AS distance]`,
+      `*=>[KNN ${this.options.topK} @embedding $BLOB AS distance]`,
       {
         PARAMS: {
           BLOB: float32ToBuffer(embedding),
@@ -153,12 +154,15 @@ export class LongTermMemoryModel {
         } as LongTermMemoryEntry & WithDistance;
       })
       .filter((entry) => {
-        return !isNaN(entry.distance) && entry.distance <= 0.4;
+        return (
+          !isNaN(entry.distance) &&
+          entry.distance <= this.options.distanceThreshold
+        );
       });
   }
 
   async add(question: string, answer: string, ttl?: number) {
-    const existingResult = await this.search(question, 1);
+    const existingResult = await this.search(question);
 
     if (existingResult.length > 0 && existingResult[0].distance === 0) {
       return this.update(existingResult[0].id, question, answer, ttl);

@@ -14,6 +14,8 @@ export interface EpisodicMemoryModelOptions {
   vectorDimensions?: number;
   createUid?(): string;
   embed?(text: string): Promise<number[]>;
+  distanceThreshold?: number;
+  topK?: number;
 }
 
 export class EpisodicMemoryModel {
@@ -90,6 +92,8 @@ export class EpisodicMemoryModel {
         embed: async (text: string) => {
           throw new Error("You must provide an embed function");
         },
+        distanceThreshold: 0.4,
+        topK: 1,
       } as EpisodicMemoryModelOptions,
       options,
     );
@@ -119,15 +123,12 @@ export class EpisodicMemoryModel {
     this.options = options;
   }
 
-  async search(
-    query: string,
-    topK: number = 5,
-  ): Promise<(EpisodicMemoryEntry & WithDistance)[]> {
+  async search(query: string): Promise<(EpisodicMemoryEntry & WithDistance)[]> {
     const embedding = await this.options.embed(query);
 
     const results = await this.db.ft.search(
       EpisodicMemoryModel.Index(this.userId),
-      `*=>[KNN ${topK} @embedding $BLOB AS distance]`,
+      `*=>[KNN ${this.options.topK} @embedding $BLOB AS distance]`,
       {
         PARAMS: {
           BLOB: float32ToBuffer(embedding),
@@ -147,7 +148,10 @@ export class EpisodicMemoryModel {
         } as EpisodicMemoryEntry & WithDistance;
       })
       .filter((entry) => {
-        return !isNaN(entry.distance) && entry.distance <= 0.4;
+        return (
+          !isNaN(entry.distance) &&
+          entry.distance <= this.options.distanceThreshold
+        );
       });
   }
 

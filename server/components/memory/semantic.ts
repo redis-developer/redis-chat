@@ -15,6 +15,8 @@ export interface SemanticMemoryModelOptions {
   vectorDimensions?: number;
   createUid?(): string;
   embed?(text: string): Promise<number[]>;
+  distanceThreshold?: number;
+  topK?: number;
 }
 
 export class SemanticMemoryModel {
@@ -89,6 +91,8 @@ export class SemanticMemoryModel {
         embed: async (text: string) => {
           throw new Error("You must provide an embed function");
         },
+        distanceThreshold: 0.4,
+        topK: 1,
       } as SemanticMemoryModelOptions,
       options,
     );
@@ -112,15 +116,12 @@ export class SemanticMemoryModel {
     this.options = options;
   }
 
-  async search(
-    query: string,
-    topK: number = 5,
-  ): Promise<(SemanticMemoryEntry & WithDistance)[]> {
+  async search(query: string): Promise<(SemanticMemoryEntry & WithDistance)[]> {
     const embedding = await this.options.embed(query);
 
     const results = await this.db.ft.search(
       SemanticMemoryModel.Index(),
-      `*=>[KNN ${topK} @embedding $BLOB AS distance]`,
+      `*=>[KNN ${this.options.topK} @embedding $BLOB AS distance]`,
       {
         PARAMS: {
           BLOB: float32ToBuffer(embedding),
@@ -141,7 +142,10 @@ export class SemanticMemoryModel {
         } as SemanticMemoryEntry & WithDistance;
       })
       .filter((entry) => {
-        return !isNaN(entry.distance) && entry.distance <= 0.4;
+        return (
+          !isNaN(entry.distance) &&
+          entry.distance <= this.options.distanceThreshold
+        );
       });
   }
 

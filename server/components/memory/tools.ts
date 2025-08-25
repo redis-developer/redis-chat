@@ -139,7 +139,7 @@ export class Tools {
   }
 
   async search(query: string) {
-    const results = await this.workingMemoryModel.search(query, 1);
+    const results = await this.workingMemoryModel.search(query);
 
     if (results.length === 0) {
       return "";
