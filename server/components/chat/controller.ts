@@ -104,13 +104,13 @@ export async function clearMemory(
  * @param {string} chatId - The ID of the chat user.
  */
 export async function ask(userId: string, chatId: string) {
-  try {
-    const chat = await getChat(userId, chatId);
-    const workingMemory = await getWorkingMemory(userId);
-    const tools = Tools.New(workingMemory);
-    const messages = await chat.messages();
-    const question = messages[messages.length - 1].content;
+  const chat = await getChat(userId, chatId);
+  const workingMemory = await getWorkingMemory(userId);
+  const tools = Tools.New(workingMemory);
+  const messages = await chat.messages();
+  const question = messages[messages.length - 1].content;
 
+  try {
     logger.info(
       `Retrieved ${messages.length} messages from user \`${userId}\``,
       {
