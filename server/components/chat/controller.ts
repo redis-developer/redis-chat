@@ -102,16 +102,17 @@ export async function clearMemory(
  *
  * @param {string} userId - The ID of the chat user.
  * @param {string} chatId - The ID of the chat user.
- * @param {string} question - The question to send to the LLM.
  */
-export async function ask(userId: string, chatId: string, question: string) {
+export async function ask(userId: string, chatId: string) {
   try {
     const chat = await getChat(userId, chatId);
     const workingMemory = await getWorkingMemory(userId);
     const tools = Tools.New(workingMemory);
-    const messageHistory = await chat.messages();
+    const messages = await chat.messages();
+    const question = messages[messages.length - 1].content;
+
     logger.info(
-      `Retrieved ${messageHistory.length} messages from user \`${userId}\``,
+      `Retrieved ${messages.length} messages from user \`${userId}\``,
       {
         userId,
       },
@@ -144,7 +145,7 @@ export async function ask(userId: string, chatId: string, question: string) {
       );
     }
 
-    const result = await answerPrompt(question, messageHistory, tools);
+    const result = await answerPrompt(messages, tools);
 
     logger.info(`LLM response received for question: ${question}`, {
       userId,
@@ -203,7 +204,7 @@ export async function processChat(
     botResponseSent = true;
 
     if (response.content === "...") {
-      response.content = await ask(userId, chatId, message);
+      response.content = await ask(userId, chatId);
     }
 
     response = await chat.push(response);

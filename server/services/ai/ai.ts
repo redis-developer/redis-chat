@@ -73,7 +73,6 @@ export async function embedText(text: string): Promise<number[]> {
 }
 
 export async function answerPrompt(
-  prompt: string,
   messages: ChatMessage[],
   tools: Tools,
 ): Promise<string> {
@@ -124,5 +123,7 @@ export async function answerPrompt(
 
   return response.text;
 }
+
+export async function summarize() {}
 
 export const llm = getLlm();
