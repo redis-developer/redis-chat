@@ -1,6 +1,6 @@
 import express from "express";
 import { engine } from "express-handlebars";
-import config from "./config";
+import type { HelperOptions } from "handlebars";
 import session from "./utils/session";
 import { ctrl } from "./components/chat";
 
@@ -13,14 +13,15 @@ app.engine(
     helpers: {
       /**
        * Checks if two values are equal.
-       *
-       * @param {import("handlebars").HelperOptions} options - Handlebars options object.
        */
-      isEqual(options) {
-        const { chatId, currentChatId } = options.hash;
-        return chatId == currentChatId
-          ? options.fn(this)
-          : options.inverse(this);
+      ifEqual(options: HelperOptions) {
+        const { a, b } = options.hash;
+        return a == b ? options.fn(this) : options.inverse(this);
+      },
+      isEqual(options: HelperOptions) {
+        const { a, b } = options.hash;
+
+        return a === b;
       },
     },
   }),
@@ -30,14 +31,16 @@ app.set("views", "./views");
 app.use(session);
 
 app.get("/", async (req, res) => {
-  const sessionId = req.session.id;
+  const userId = req.session.id;
   // @ts-ignore
   const currentChatId = req.session.currentChatId;
-  const chats = await ctrl.getAllChats(sessionId);
+  const chats = await ctrl.getAllChats(userId);
+
   res.render("index", {
-    sessionId,
+    userId,
     currentChatId,
-    chats, // TODO: add chats
+    chats,
+    placeholder: !currentChatId,
   });
 });
 

@@ -28,7 +28,7 @@ const config = {
       process.env.OPENAI_EMBEDDINGS_DIMENSIONS ?? "1536",
       10,
     ),
-    CHAT_MODEL: process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini",
+    CHAT_MODEL: process.env.OPENAI_CHAT_MODEL || "gpt-5",
   },
   google: {
     CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",

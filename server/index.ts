@@ -1,7 +1,8 @@
-import { WebSocketServer } from "ws";
 import config from "./config";
 import app from "./app";
 import logger, { logWss } from "./utils/log";
+import { IncomingMessage } from "http";
+import { Duplex } from "stream";
 import * as chat from "./components/chat";
 
 const port = config.env.PORT;
@@ -12,15 +13,12 @@ const server = app.listen(port, async () => {
   });
 });
 
-/**
- * Handles WebSocket upgrade requests for the chat service.
- *
- * @param {import("express").Request} req - The HTTP request object.
- * @param {import("node:stream").Duplex} socket - The socket for the connection.
- * @param {Buffer} head - The first packet of the WebSocket connection.
- */
-function onUpgrade(req, socket, head) {
-  let url = req.url;
+function onUpgrade(
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer<ArrayBufferLike>,
+) {
+  let url = req.url!;
 
   if (url.includes("wss://")) {
     url = new URL(url).pathname;

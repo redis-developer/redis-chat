@@ -1,6 +1,6 @@
   <ul hx-swap-oob="outerHTML:#chats" id="chats" class="my-2 overflow-y-scroll">
     {{#each chats}}
-      <li class="truncate cursor-pointer rounded hover:bg-gray-200 active:bg-gray-300{{#isEqual chatId=chatId currentChatId=../currentChatId}} bg-gray-300{{/isEqual}}">
+      <li class="truncate cursor-pointer rounded hover:bg-gray-200 active:bg-gray-300{{#ifEqual a=chatId b=../currentChatId}} bg-gray-300{{/ifEqual}}">
         <form ws-send hx-disabled-elt="this" class="block w-full">
             <input type="hidden" name="cmd" value="switch_chat" />
             <input type="hidden" name="chatId" value="{{chatId}}" />

@@ -1,25 +1,24 @@
 import config from "./config";
 import { createClient } from "redis";
+import type {
+  RedisClientOptions,
+  RedisClientType,
+  RedisDefaultModules,
+} from "redis";
 
 if (!config.redis.URL) {
   console.error("REDIS_URL not set");
 }
 
-/** @type {Record<string, ReturnType<typeof createClient>>} */
-let clients = {};
+export type RedisClient = RedisClientType<RedisDefaultModules, {}, {}, 2, {}>;
+
+let clients: Record<string, RedisClient> = {};
 let maxRetries = 5;
 
-/** @type {Record<string, number>} */
-let retries = {};
-/** @type {Record<string, boolean>} */
-let connectionsRefused = {};
+let retries: Record<string, number> = {};
+let connectionsRefused: Record<string, boolean> = {};
 
-/**
- * @param {import("redis").RedisClientOptions} [options]
- *
- * @returns {ReturnType<typeof createClient>}
- */
-export default function getClient(options) {
+export default function getClient(options?: RedisClientOptions): RedisClient {
   options = Object.assign(
     {},
     {
@@ -39,7 +38,7 @@ export default function getClient(options) {
   }
 
   try {
-    client = createClient(options);
+    client = createClient(options) as RedisClient;
 
     client
       .on("error", (err) => {
@@ -90,10 +89,7 @@ export default function getClient(options) {
   }
 }
 
-/**
- * @param {ReturnType<typeof createClient>} client
- */
-async function refreshClient(client) {
+async function refreshClient(client: RedisClient) {
   if (client) {
     const options = client.options;
 

@@ -6,11 +6,17 @@ import winston from "winston";
 import Transport from "winston-transport";
 import session from "./session";
 
-/**
- * @typedef {Object} TransportInfo
- * @property {string} level - The log level (e.g., "info", "error").
- * @property {string} message - The log message.
- */
+interface TransportInfo {
+  level: string;
+  message: string;
+}
+
+interface Meta {
+  [key: string]: unknown;
+  userId?: string;
+  error?: Error;
+  noStream?: boolean;
+}
 
 class EnumerableError extends Error {
   toJSON() {
@@ -20,27 +26,19 @@ class EnumerableError extends Error {
   }
 }
 
-/**
- * Creates a deep clone of the given value using JSON serialization.
- *
- * @param {any} value - The value to clone.
- */
-function quickClone(value) {
+function quickClone(value: any) {
   return JSON.parse(JSON.stringify(value));
 }
 
 class RedisTransport extends Transport {
-  /**
-   * Logs messages to a Redis stream.
-   *
-   * @param {TransportInfo & { [SPLAT]?: unknown[] }} info
-   * @param {function} [callback] - Optional callback function to call after logging.
-   */
-  log(info, callback = () => {}) {
+  log(
+    info: TransportInfo & { [SPLAT]?: unknown[] },
+    callback: Function = () => {},
+  ) {
     try {
       const level = info.level;
       let message = info.message;
-      let meta = /** @type {any} */ (info[SPLAT]?.[0] ?? "{}");
+      let meta = (info[SPLAT]?.[0] ?? "{}") as Meta;
 
       if (typeof message !== "string") {
         message = JSON.stringify(message);
@@ -81,8 +79,10 @@ class RedisTransport extends Transport {
 }
 
 class WebsocketTransport extends Transport {
-  /** @type {Record<string, ((ev: { level: string; message: string; meta?: unknown }) => unknown)[]>} */
-  subscribers = {};
+  subscribers: Record<
+    string,
+    ((ev: { level: string; message: string; meta?: unknown }) => unknown)[]
+  > = {};
 
   /**
    * Logs messages to a Redis stream.
@@ -90,26 +90,29 @@ class WebsocketTransport extends Transport {
    * @param {TransportInfo & { [SPLAT]?: unknown[] }} info
    * @param {function} [callback] - Optional callback function to call after logging.
    */
-  log(info, callback = () => {}) {
+  log(
+    info: TransportInfo & { [SPLAT]?: unknown[] },
+    callback: Function = () => {},
+  ) {
     try {
       const level = info.level;
       let message = info.message;
-      let meta = /** @type {any} */ (info[SPLAT]?.[0]);
+      let meta = info[SPLAT]?.[0] as Meta | undefined;
 
-      if (!meta?.sessionId) {
+      if (!meta?.userId) {
         callback();
         return;
       }
 
-      meta = quickClone(meta);
+      meta = quickClone(meta) as Meta;
 
       if (meta?.error) {
         meta.error = new EnumerableError(meta.error.message);
       }
 
-      const sessionId = /** @type {string} */ (meta.sessionId);
-      delete meta.sessionId;
-      const subscribers = this.subscribers[sessionId] || [];
+      const userId = meta.userId!;
+      delete meta.userId;
+      const subscribers = this.subscribers[userId] || [];
 
       if (Object.keys(meta).length === 0) {
         meta = undefined;
@@ -133,23 +136,22 @@ class WebsocketTransport extends Transport {
     callback();
   }
 
-  /**
-   * Subscribes to log messages.
-   *
-   * @param {string} sessionId - The session ID for which to subscribe.
-   * @param {(ev: { level: string; message: string; meta?: unknown }) => unknown} subscriber
-   *
-   * @returns {() => void} - A function to unsubscribe the subscriber.
-   */
-  subscribe(sessionId, subscriber) {
+  subscribe(
+    userId: string,
+    subscriber: (ev: {
+      level: string;
+      message: string;
+      meta?: unknown;
+    }) => unknown,
+  ): () => void {
     if (typeof subscriber !== "function") {
       throw new Error("Subscriber must be a function");
     }
 
-    let subscribers = this.subscribers[sessionId] ?? [];
+    let subscribers = this.subscribers[userId] ?? [];
 
     if (subscribers.length === 0) {
-      this.subscribers[sessionId] = subscribers;
+      this.subscribers[userId] = subscribers;
     }
 
     subscribers.push(subscriber);
@@ -166,37 +168,34 @@ class WebsocketTransport extends Transport {
   }
 
   /**
-   * Removes a session and all its subscribers.
-   *
-   * @param {string} sessionId - The session ID to remove.
+   * Removes a user and all its subscribers.
    */
-  removeSession(sessionId) {
-    if (!this.subscribers[sessionId]) {
+  removeUser(userId: string) {
+    if (!this.subscribers[userId]) {
       return;
     }
 
-    delete this.subscribers[sessionId];
+    delete this.subscribers[userId];
   }
 
   /**
    * Handles WebSocket connections and messages.
-   *
-   * @param {import("ws").WebSocket} ws - The WebSocket connection.
-   * @param {import("express").Request} req - The HTTP request object.
    */
-  onConnection(ws, req) {
-    session(req, /** @type {any} */ ({}), async () => {
-      const sessionId = req.session.id;
+  onConnection(ws: import("ws").WebSocket, req: import("express").Request) {
+    session(req, {} as any, async () => {
+      const userId = req.session.id;
 
-      if (!sessionId) {
+      if (!userId) {
         return;
       }
       /**
        * Sends a response to the WebSocket client.
-       *
-       * @param {{ level: string; message: string; meta?: unknown }} response - The response message to send.
        */
-      const send = (response) => {
+      const send = (response: {
+        level: string;
+        message: string;
+        meta?: unknown;
+      }) => {
         if (ws.readyState === ws.OPEN) {
           ws.send(JSON.stringify(response));
         } else {
@@ -204,7 +203,7 @@ class WebsocketTransport extends Transport {
         }
       };
 
-      const unsubscribe = this.subscribe(sessionId, send);
+      const unsubscribe = this.subscribe(userId, send);
       ws.on("error", unsubscribe);
       ws.on("close", unsubscribe);
 

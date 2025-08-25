@@ -1,57 +1,43 @@
 import { WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
+import type { Request } from "express";
 import logger, { logWst } from "../../utils/log";
 import { randomUlid } from "../../utils/uid";
 import session from "../../utils/session";
 import * as ctrl from "./controller";
+import * as view from "./view";
 
 export const wss = new WebSocketServer({ noServer: true });
 
 /**
  * Handles WebSocket connections and messages.
- *
- * @param {import("ws").WebSocket} ws - The WebSocket connection.
- * @param {import("express").Request} req - The HTTP request object.
  */
-function onConnection(ws, req) {
-  session(req, /** @type {any} */ ({}), async () => {
-    const sessionId = req.session.id;
+function onConnection(ws: WebSocket, req: Request) {
+  session(req, {} as any, async () => {
+    const userId = req.session.id;
 
-    if (!sessionId) {
+    if (!userId) {
       return;
     }
 
     /**
      * Sends a response to the WebSocket client.
-     *
-     * @param {string} response - The response message to send.
      */
-    const send = (response) => {
+    const send = (response: string) => {
       if (ws.readyState === ws.OPEN) {
         ws.send(response);
       } else {
         logger.warn("WebSocket is not open, cannot send message", {
-          sessionId: req.session.id,
+          userId: req.session.id,
         });
       }
     };
 
     logger.debug("Chat websocket connection established", {
-      sessionId: req.session.id,
+      userId: req.session.id,
     });
 
-    let currentChatId = /** @type {string} */ (
-      /** @type {any} */ (req.session).currentChatId
-    );
-
-    if (!currentChatId) {
-      currentChatId = `chat-${randomUlid()}`;
-
-      // @ts-ignore
-      req.session.currentChatId = currentChatId;
-      req.session.save();
-
-      await ctrl.newChat(send, sessionId, currentChatId);
-    }
+    let currentChatId: string | undefined;
 
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
@@ -59,14 +45,18 @@ function onConnection(ws, req) {
 
       switch (form.cmd) {
         case "new_message":
-          await ctrl.processChat(send, {
-            sessionId,
+          currentChatId = await ctrl.processChat(send, {
+            userId,
             chatId: currentChatId,
             message: form.message,
           });
+
+          // @ts-ignore
+          req.session.currentChatId = currentChatId;
+          req.session.save();
           break;
-        case "new_session":
-          logWst.removeSession(sessionId);
+        case "new_user":
+          logWst.removeUser(userId);
           req.session.destroy(function (err) {
             if (err) {
               logger.error("Failed to regenerate session", { error: err });
@@ -77,22 +67,22 @@ function onConnection(ws, req) {
         case "new_chat":
           currentChatId = `chat-${randomUlid()}`;
 
+          currentChatId = await ctrl.newChat(send, userId);
+
           // @ts-ignore
           req.session.currentChatId = currentChatId;
           req.session.save();
-
-          await ctrl.newChat(send, sessionId, currentChatId);
           break;
         case "switch_chat":
           if (!form.chatId) {
             logger.warn("No chatId provided for switch_chat command", {
-              sessionId,
+              userId,
             });
             return;
           }
           if (form.chatId === currentChatId) {
             logger.warn("Attempted to switch to the current chat", {
-              sessionId,
+              userId,
               chatId: form.chatId,
             });
             return;
@@ -103,18 +93,27 @@ function onConnection(ws, req) {
           req.session.currentChatId = currentChatId;
           req.session.save();
 
-          await ctrl.switchChat(send, sessionId, currentChatId);
+          await ctrl.switchChat(send, userId, currentChatId!);
           break;
         case "clear_all":
-          await ctrl.clearMemory(send, sessionId);
+          await ctrl.clearMemory(send, userId);
+          logWst.removeUser(userId);
+          req.session.destroy(function (err) {
+            if (err) {
+              logger.error("Failed to regenerate session", { error: err });
+              return;
+            }
+          });
           break;
         default:
-          logger.warn("Unknown command received", { cmd: form.cmd, sessionId });
+          logger.warn("Unknown command received", { cmd: form.cmd, userId });
           return;
       }
     });
 
-    await ctrl.initializeChat(send, sessionId, currentChatId);
+    if (currentChatId) {
+      await ctrl.initializeChat(send, userId, currentChatId);
+    }
   });
 }
 
