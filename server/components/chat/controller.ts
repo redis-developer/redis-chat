@@ -122,10 +122,7 @@ export async function ask(userId: string, chatId: string) {
       userId,
     });
 
-    const existingResult = await workingMemory.searchSemanticMemory(
-      question,
-      1,
-    );
+    const existingResult = await workingMemory.searchSemanticMemory(question);
 
     if (existingResult.length > 0) {
       logger.info(
