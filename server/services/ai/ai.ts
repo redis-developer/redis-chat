@@ -3,9 +3,8 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createVertex } from "@ai-sdk/google-vertex";
 import type { LanguageModelV2, EmbeddingModelV2 } from "@ai-sdk/provider";
-import { generateText, embed, stepCountIs } from "ai";
+import { generateText, embed, stepCountIs, ModelMessage, Tool, ToolSet } from "ai";
 import config from "../../config";
-import { Tools } from "../../components/memory";
 import type { ChatMessage } from "../../components/memory";
 
 /**
@@ -14,7 +13,9 @@ import type { ChatMessage } from "../../components/memory";
 function getLlm() {
   let chat: LanguageModelV2 | null = null;
   let embeddings: EmbeddingModelV2<string> | null = null;
+  let summaryEmbeddings: EmbeddingModelV2<string> | null = null;
   let dimensions: number | null = null;
+  let summaryDimensions: number | null = null;
 
   if (config.anthropic.API_KEY && config.anthropic.API_KEY.length > 0) {
     chat = createAnthropic({ apiKey: config.anthropic.API_KEY })(
@@ -28,7 +29,9 @@ function getLlm() {
     });
 
     embeddings = embeddings ?? openai.embedding(config.openai.EMBEDDINGS_MODEL);
+    summaryEmbeddings = summaryEmbeddings ?? openai.embedding(config.openai.SUMMARY_EMBEDDINGS_MODEL);
     dimensions = dimensions ?? config.openai.EMBEDDINGS_DIMENSIONS;
+    summaryDimensions = summaryDimensions ?? config.openai.SUMMARY_EMBEDDINGS_DIMENSIONS;
     chat = chat ?? openai(config.openai.CHAT_MODEL);
   }
 
@@ -43,11 +46,13 @@ function getLlm() {
 
     embeddings =
       embeddings ?? vertex.textEmbeddingModel(config.google.EMBEDDINGS_MODEL);
+    summaryEmbeddings = summaryEmbeddings ?? vertex.textEmbeddingModel(config.google.SUMMARY_EMBEDDINGS_MODEL);
     dimensions = dimensions ?? config.google.EMBEDDINGS_DIMENSIONS;
+    summaryDimensions = summaryDimensions ?? config.google.SUMMARY_EMBEDDINGS_DIMENSIONS;
     chat = chat ?? vertex(config.google.CHAT_MODEL);
   }
 
-  if (!chat || !embeddings || !dimensions) {
+  if (!chat || !embeddings || !dimensions || !summaryEmbeddings || !summaryDimensions) {
     throw new Error(
       "No LLM configured. Please set the appropriate environment variables for Anthropic, OpenAI, or Google Vertex AI.",
     );
@@ -56,7 +61,9 @@ function getLlm() {
   return {
     chat,
     embeddings,
+    summaryEmbeddings,
     dimensions,
+    summaryDimensions,
   };
 }
 
@@ -72,58 +79,128 @@ export async function embedText(text: string): Promise<number[]> {
   return embedding;
 }
 
+export async function embedSummary(text: string): Promise<number[]> {
+  const { embedding } = await embed({
+    model: llm.summaryEmbeddings,
+    value: text,
+  });
+
+  return embedding;
+}
+
 export async function answerPrompt(
   messages: ChatMessage[],
-  tools: Tools,
+  summary: string,
+  tools: (Tool & { name: string })[],
 ): Promise<string> {
-  const { addMemoryTool, searchTool, updateMemoryTool } = tools.getTools();
+  let prompt = `
+    The current date is ${new Date().toISOString()}
+    Answer the latest user question to the best of your ability. The following tools are available to you:
+    ${tools.map((tool) => {
+      return tool.description;
+    }).join("\n")}
+  `;
+
+  if (typeof summary === "string" && summary.length > 0) {
+    prompt += `
+    The chat messages have been condensed to save space, below is a summary including the important details from the chat history:
+
+    <summary>
+    ${summary}
+    </summary>
+  `;
+  }
 
   const response = await generateText({
     model: llm.chat,
     messages: [
       {
         role: "system",
-        content: `
-            Answer the latest user question to the best of your ability. The following tools are available to you:
-            - Call the \`${searchTool.name}\` tool if you need to search user memory for relevant information. 
-                - Appropriate times to use the \`${searchTool.name}\` tool include:
-                    - If you cannot answer the prompt without information that is based on the user's past interactions.
-                    - If the user has asked a prompt that requires context from previous interactions.
-                    - If are unable to answer the prompt based on the current context, but you think the answer could exist in memory.
-                - Types of user memory include:
-                    - **long-term**: Contains relevant information about the user such as their preferences and settings.
-                    - **semantic**: Contains general knowledge that is relevant to all users such as, "Why is the sky blue?".
-                    - **episodic**: Contains summaries of past interactions with the user.
-                - Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
-            - Call the \`${addMemoryTool.name}\` to add a memory that you might want to lookup later based on the prompt. The memory can be stored in:
-                - **long-term**: If the memory is relevant to the user and can help in future interactions across different sessions.
-                - **semantic**: If the memory is relevant to all users and can help in future interactions across all sessions.
-                - Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
-                - Don't translate pronouns when answering the question, only when storing in memory.
-            - Call the \`${updateMemoryTool.name}\` to update an existing memory obtained from \`${searchTool.name}\` with a new value. The memory can be stored in:
-                - **long-term**: If the memory is relevant to the user and can help in future interactions across different sessions.
-                - **semantic**: If the memory is general knowledge relevant to anyone and can help in future interactions. You _must_ use semantic memory if possible.
-                - Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.
-                - Don't translate pronouns when answering the question, only when storing in memory.
-            
-            - When answering the prompt, if you have obtained relevant information from memory using the \`${searchTool.name}\` tool, use that information to construct your answer.
-            - Make sure you add any relevant information from the prompt to either "semantic" or "long-term" memory using the \`${addMemoryTool.name}\` tool so that you can lookup that information in future interactions.
-            - Only use the tools with the latest message, do not use tools on prior messages.
-          `,
+        content: prompt,
       },
       ...messages,
     ],
-    tools: {
-      [searchTool.name]: searchTool,
-      [addMemoryTool.name]: addMemoryTool,
-      [updateMemoryTool.name]: updateMemoryTool,
-    },
+    tools: tools.reduce((result, tool) => {
+      result[tool.name] = tool;
+
+      return result;
+    }, {} as ToolSet),
     stopWhen: [stepCountIs(10)],
   });
 
   return response.text;
 }
 
-export async function summarize() {}
+export async function extract(systemPrompt: string, message: ChatMessage, tools: (Tool & { name: string })[]): Promise<unknown> {
+  const response = await generateText({
+    model: llm.chat,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+      message,
+    ],
+    tools: tools.reduce((result, tool) => {
+      result[tool.name] = tool;
+
+      return result;
+    }, {} as ToolSet),
+    stopWhen: [stepCountIs(10)],
+  });
+
+  return response;
+}
+
+export async function summarize(messages: ChatMessage[], existingSummary: string, tools: (Tool & { name: string })[]) {
+  let prompt = `
+    The current date is ${new Date().toISOString()}
+    **Analyze the input messages and generate 5 essential questions** that, when answered, comprehensively capture the main points and core meaning of the messages. Aim for questions that dig deeper into the content and avoid redundancy.
+
+    **Guidelines for formulating questions**:
+
+    - Address the central theme or argument.
+    - Identify key supporting ideas.
+    - Highlight important facts or evidence.
+    - Reveal the user's purpose or perspective.
+    - Explore any significant implications or conclusions.
+
+    **Answer each question in detail**: Provide thorough, clear answers, maintaining a balance between depth and clarity.
+    **Final summary**: Conclude with a one or two-sentence summary that encapsulates the core message of the text. Include a specific example to illustrate your point.
+
+    You have the following tool available to you:
+    ${tools.map((tool) => {
+      return tool.description;
+    }).join("\n")}
+  `;
+
+  if (typeof existingSummary === "string" && existingSummary.length > 0) {
+    prompt += `
+    **Existing summary**: Below is an existing summary that you should add onto based on the set of messages. Only add new questions, do not remove old questions and answers.
+
+    <existing-summary>
+    ${existingSummary}
+    </existing-summary>`
+  }
+
+  const { text } = await generateText({
+    model: llm.chat,
+    messages: [
+      {
+        role: "system",
+        content: prompt,
+      },
+      ...messages,
+    ],
+    tools: tools.reduce((result, tool) => {
+      result[tool.name] = tool;
+
+      return result;
+    }, {} as ToolSet),
+    stopWhen: [stepCountIs(5)],
+  });
+
+  return text;
+}
 
 export const llm = getLlm();

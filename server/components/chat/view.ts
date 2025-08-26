@@ -93,13 +93,13 @@ export function clearMessages({
  */
 export function renderChats({
   chats,
-  currentChatId,
+  currentSessionId,
 }: {
-  chats: Array<{ chatId: string; message: string }>;
-  currentChatId: string;
+  chats: Array<{ sessionId: string; message: string }>;
+  currentSessionId: string;
 }) {
   return chatsTemplate({
     chats,
-    currentChatId,
+    currentSessionId,
   });
 }

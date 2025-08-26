@@ -33,14 +33,14 @@ app.use(session);
 app.get("/", async (req, res) => {
   const userId = req.session.id;
   // @ts-ignore
-  const currentChatId = req.session.currentChatId;
+  const currentSessionId = req.session.currentSessionId;
   const chats = await ctrl.getAllChats(userId);
 
   res.render("index", {
     userId,
-    currentChatId,
+    currentSessionId,
     chats,
-    placeholder: !currentChatId,
+    placeholder: !currentSessionId,
   });
 });
 

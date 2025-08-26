@@ -1,10 +1,10 @@
 import getClient from "../../redis";
-import { llm, embedText, answerPrompt } from "../../services/ai/ai";
+import { llm, embedText, answerPrompt, summarize, embedSummary, extract } from "../../services/ai/ai";
 import { randomUlid } from "../../utils/uid";
 import logger from "../../utils/log";
 import * as view from "./view";
 import * as memory from "../memory";
-import { Tools } from "../memory";
+import dayjs from "dayjs";
 
 async function flush(userId: string) {
   const db = getClient();
@@ -32,10 +32,18 @@ async function flush(userId: string) {
   );
 }
 
-async function getChat(userId: string, chatId?: string) {
+const longTermOptions: memory.LongTermMemoryModelOptions = {
+  createUid: randomUlid,
+  distanceThreshold: 0.12,
+  embed: embedText,
+  extract: extract,
+  vectorDimensions: llm.dimensions,
+};
+
+async function getChat(userId: string, sessionId?: string) {
   const redis = getClient();
 
-  return memory.ChatModel.FromChatId(redis, userId, chatId, {
+  return memory.ChatModel.FromSessionId(redis, userId, sessionId, {
     createUid: () => randomUlid(),
   });
 }
@@ -43,11 +51,7 @@ async function getChat(userId: string, chatId?: string) {
 async function getWorkingMemory(userId: string) {
   const redis = getClient();
 
-  return memory.WorkingMemoryModel.New(redis, userId, {
-    createUid: () => randomUlid(),
-    vectorDimensions: llm.dimensions,
-    embed: embedText,
-  });
+  return memory.LongTermMemoryModel.New(redis, userId, longTermOptions);
 }
 
 /**
@@ -56,14 +60,14 @@ async function getWorkingMemory(userId: string) {
 export async function clearChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  sessionId: string,
 ) {
   try {
     logger.info(`Clearing messages for user \`${userId}\``, {
       userId: userId,
     });
 
-    const chat = await getChat(userId, chatId);
+    const chat = await getChat(userId, sessionId);
     await chat.clear();
     send(view.clearMessages());
   } catch (error) {
@@ -101,14 +105,21 @@ export async function clearMemory(
  * Asks the LLM for a response to the given prompt.
  *
  * @param {string} userId - The ID of the chat user.
- * @param {string} chatId - The ID of the chat user.
+ * @param {string} sessionId - The ID of the chat user.
  */
-export async function ask(userId: string, chatId: string) {
-  const chat = await getChat(userId, chatId);
+export async function ask(userId: string, sessionId: string) {
+  const chat = await getChat(userId, sessionId);
   const workingMemory = await getWorkingMemory(userId);
-  const tools = Tools.New(workingMemory);
-  const messages = await chat.messages();
+  const { summary, lastSummarizedAt } = await chat.metadata();
+  let messages = await chat.messages();
   const question = messages[messages.length - 1].content;
+  const lastSummarized = dayjs(lastSummarizedAt);
+
+  if (typeof summary === "string" && summary.length > 0) {
+    messages = messages.filter((message) => {
+      return dayjs(message.createdAt).isAfter(lastSummarized);
+    });
+  }
 
   try {
     logger.info(
@@ -122,7 +133,11 @@ export async function ask(userId: string, chatId: string) {
       userId,
     });
 
-    const existingResult = await workingMemory.searchSemanticMemory(question);
+    const existingResult = await workingMemory.search({
+      query: question,
+      requiresUserId: false,
+      type: "semantic",
+    });
 
     if (existingResult.length > 0) {
       logger.info(
@@ -132,7 +147,7 @@ export async function ask(userId: string, chatId: string) {
         },
       );
 
-      return existingResult[0].answer;
+      return existingResult[0].text;
     } else {
       logger.info(
         `No existing semantic memory found for question: ${question}`,
@@ -142,7 +157,7 @@ export async function ask(userId: string, chatId: string) {
       );
     }
 
-    const result = await answerPrompt(messages, tools);
+    const result = await answerPrompt(messages, summary, [workingMemory.getSearchTool()]);
 
     logger.info(`LLM response received for question: ${question}`, {
       userId,
@@ -166,18 +181,20 @@ export async function processChat(
   send: (message: string) => void,
   {
     userId,
-    chatId,
+    sessionId,
     message,
-  }: { userId: string; chatId?: string; message: string },
+  }: { userId: string; sessionId?: string; message: string },
 ): Promise<string> {
   let botResponseSent = false;
-  const chat = await getChat(userId, chatId);
-  chatId = chat.chatId;
+  const chat = await getChat(userId, sessionId);
+  const workingMemory = await getWorkingMemory(userId);
+  sessionId = chat.sessionId;
   let response: memory.ChatMessage = {
     id: `bot-${randomUlid()}`,
     role: "assistant",
     content: "...",
-    timestamp: Date.now(),
+    createdAt: new Date().toISOString(),
+    extracted: "f",
   };
   const botId = response.id;
 
@@ -201,10 +218,12 @@ export async function processChat(
     botResponseSent = true;
 
     if (response.content === "...") {
-      response.content = await ask(userId, chatId);
+      response.content = await ask(userId, sessionId);
     }
 
     response = await chat.push(response);
+
+    await workingMemory.extract([response], sessionId);
 
     logger.info(`Bot message added to stream for user \`${userId}\``, {
       userId,
@@ -217,7 +236,7 @@ export async function processChat(
 
     send(replacement);
 
-    return chatId;
+    return sessionId;
   } catch (error) {
     console.log(error);
     logger.error(`Error handling message:`, {
@@ -229,7 +248,8 @@ export async function processChat(
       id: botId,
       content: "An error occurred while processing your message.",
       role: "assistant",
-      timestamp: Date.now(),
+      createdAt: new Date().toISOString(),
+      extracted: "f",
     };
 
     if (botResponseSent) {
@@ -244,7 +264,7 @@ export async function processChat(
     }
   }
 
-  return chatId;
+  return sessionId;
 }
 
 /**
@@ -261,7 +281,7 @@ export async function newChat(
     const newChat = await memory.ChatModel.New(getClient(), userId, {
       createUid: () => randomUlid(),
     });
-    const newChatId = newChat.chatId;
+    const newSessionId = newChat.sessionId;
     const existingChats = await memory.ChatModel.AllChats(getClient(), userId, {
       createUid: () => randomUlid(),
     });
@@ -269,7 +289,7 @@ export async function newChat(
     const chats = [
       ...existingChats.map((chat) => {
         return {
-          chatId: chat.chatId,
+          sessionId: chat.sessionId,
           message: chat.messages[0]?.content ?? "New chat",
         };
       }),
@@ -278,7 +298,7 @@ export async function newChat(
     send(
       view.renderChats({
         chats,
-        currentChatId: newChatId,
+        currentSessionId: newSessionId,
       }),
     );
 
@@ -288,7 +308,7 @@ export async function newChat(
       }),
     );
 
-    return newChatId;
+    return newSessionId;
   } catch (error) {
     logger.error(`Failed to create new chat for user \`${userId}\`:`, {
       error,
@@ -304,10 +324,10 @@ export async function newChat(
 export async function switchChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  sessionId: string,
 ) {
   try {
-    logger.info(`Switching to chat \`${chatId}\` for user \`${userId}\``, {
+    logger.info(`Switching to chat \`${sessionId}\` for user \`${userId}\``, {
       userId,
     });
     const db = getClient();
@@ -321,11 +341,11 @@ export async function switchChat(
       view.renderChats({
         chats: chats.map((chat) => {
           return {
-            chatId: chat.chatId,
+            sessionId: chat.sessionId,
             message: chat.messages[0]?.content ?? "New chat",
           };
         }),
-        currentChatId: chatId,
+        currentSessionId: sessionId,
       }),
     );
 
@@ -335,7 +355,7 @@ export async function switchChat(
       }),
     );
 
-    const chat = await memory.ChatModel.FromChatId(db, userId, chatId, options);
+    const chat = await memory.ChatModel.FromSessionId(db, userId, sessionId, options);
     const messages = await chat.messages();
 
     for (const message of messages) {
@@ -356,7 +376,7 @@ export async function switchChat(
 export async function initializeChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  sessionId: string,
 ) {
   try {
     logger.info(`Initializing chat for user \`${userId}\``, {
@@ -367,7 +387,7 @@ export async function initializeChat(
     const options = {
       createUid: () => randomUlid(),
     };
-    const chat = await memory.ChatModel.FromChatId(db, userId, chatId, options);
+    const chat = await memory.ChatModel.FromSessionId(db, userId, sessionId, options);
     const messages = await chat.messages();
     const placeholder = messages.length === 0;
 
@@ -388,6 +408,48 @@ export async function initializeChat(
   }
 }
 
+export async function summarizeChat(userId: string, sessionId: string) {
+  try {
+    const db = getClient();
+    const options = {
+      createUid: () => randomUlid(),
+    };
+    const workingMemory = await getWorkingMemory(userId);
+    const chat = await memory.ChatModel.FromSessionId(db, userId, sessionId, options);
+    const messages = await chat.messages();
+    const { summary, lastSummarizedAt } = await chat.metadata();
+    const lastSummarized = dayjs(lastSummarizedAt);
+    const messagesToSummarize = messages.filter((message) => {
+      return dayjs(message.createdAt).isAfter(lastSummarized);
+    });
+
+    if (messagesToSummarize.length < 5) {
+      return;
+    }
+
+    logger.info(`Summarizing chat ${sessionId} for user ${userId}`, {
+      userId,
+      sessionId,
+    });
+    
+    const newSummary = await summarize(messagesToSummarize, summary, []);
+
+    logger.info(`Chat ${sessionId} for user ${userId} summarized.`, {
+      userId,
+      sessionId,
+      summary: newSummary,
+    });
+
+    await chat.updateSummary(newSummary);
+  } catch (error) {
+    logger.error(`Failed to summarize chat \`${sessionId}\` for user \`${userId}\`:`, {
+      error,
+      userId,
+      sessionId,
+    });
+  }
+}
+
 /**
  * Retrieves the chat history for a given user.
  */
@@ -403,7 +465,7 @@ export async function getAllChats(userId: string) {
 
     return existingChats.map((chat) => {
       return {
-        chatId: chat.chatId,
+        sessionId: chat.sessionId,
         message: chat.messages[0]?.content ?? "New chat",
       };
     });

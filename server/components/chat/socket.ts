@@ -37,7 +37,7 @@ function onConnection(ws: WebSocket, req: Request) {
       userId: req.session.id,
     });
 
-    let currentChatId: string | undefined;
+    let currentSessionId: string | undefined;
 
     ws.on("error", logger.error);
     ws.on("message", async (data) => {
@@ -45,14 +45,18 @@ function onConnection(ws: WebSocket, req: Request) {
 
       switch (form.cmd) {
         case "new_message":
-          currentChatId = await ctrl.processChat(send, {
+          currentSessionId = await ctrl.processChat(send, {
             userId,
-            chatId: currentChatId,
+            sessionId: currentSessionId,
             message: form.message,
           });
 
+          if (currentSessionId) {
+            await ctrl.summarizeChat(userId, currentSessionId);
+          }
+
           // @ts-ignore
-          req.session.currentChatId = currentChatId;
+          req.session.currentSessionId = currentSessionId;
           req.session.save();
           break;
         case "new_user":
@@ -65,35 +69,35 @@ function onConnection(ws: WebSocket, req: Request) {
           });
           break;
         case "new_chat":
-          currentChatId = `chat-${randomUlid()}`;
+          currentSessionId = `chat-${randomUlid()}`;
 
-          currentChatId = await ctrl.newChat(send, userId);
+          currentSessionId = await ctrl.newChat(send, userId);
 
           // @ts-ignore
-          req.session.currentChatId = currentChatId;
+          req.session.currentSessionId = currentSessionId;
           req.session.save();
           break;
         case "switch_chat":
-          if (!form.chatId) {
-            logger.warn("No chatId provided for switch_chat command", {
+          if (!form.sessionId) {
+            logger.warn("No sessionId provided for switch_chat command", {
               userId,
             });
             return;
           }
-          if (form.chatId === currentChatId) {
+          if (form.sessionId === currentSessionId) {
             logger.warn("Attempted to switch to the current chat", {
               userId,
-              chatId: form.chatId,
+              sessionId: form.sessionId,
             });
             return;
           }
 
-          currentChatId = form.chatId;
+          currentSessionId = form.sessionId;
           // @ts-ignore
-          req.session.currentChatId = currentChatId;
+          req.session.currentSessionId = currentSessionId;
           req.session.save();
 
-          await ctrl.switchChat(send, userId, currentChatId!);
+          await ctrl.switchChat(send, userId, currentSessionId!);
           break;
         case "clear_all":
           await ctrl.clearMemory(send, userId);
@@ -111,8 +115,8 @@ function onConnection(ws: WebSocket, req: Request) {
       }
     });
 
-    if (currentChatId) {
-      await ctrl.initializeChat(send, userId, currentChatId);
+    if (currentSessionId) {
+      await ctrl.initializeChat(send, userId, currentSessionId);
     }
   });
 }

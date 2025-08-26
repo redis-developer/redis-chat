@@ -11,14 +11,15 @@ export interface ChatMessage {
   id: string;
   role: "assistant" | "user";
   content: string;
-  timestamp: number;
+  createdAt: string;
+  extracted: "t" | "f";
 }
 
 export type CreateMessage = Pick<ChatMessage, "role" | "content">;
 
 export interface ChatMetadata {
   userId: string;
-  chatId: string;
+  sessionId: string;
   summary: string;
   lastSummarizedAt?: number;
 }
@@ -28,12 +29,12 @@ export interface Chat extends ChatMetadata {
 }
 
 export class ChatModel {
-  static Key(userId: string, chatId?: string) {
-    if (!chatId) {
+  static Key(userId: string, sessionId?: string) {
+    if (!sessionId) {
       return `users:u${userId}:memory:conversations`;
     }
 
-    return `users:u${userId}:memory:conversations:c${chatId}`;
+    return `users:u${userId}:memory:conversations:c${sessionId}`;
   }
 
   static Index(userId: string) {
@@ -64,9 +65,9 @@ export class ChatModel {
         type: SCHEMA_FIELD_TYPE.TAG,
         AS: "userId",
       },
-      "$.chatId": {
+      "$.sessionId": {
         type: SCHEMA_FIELD_TYPE.TAG,
-        AS: "chatId",
+        AS: "sessionId",
       },
       "$.summary": {
         type: SCHEMA_FIELD_TYPE.TEXT,
@@ -92,26 +93,26 @@ export class ChatModel {
     });
   }
 
-  static async FromChatId(
+  static async FromSessionId(
     db: RedisClient,
     userId: string,
-    chatId?: string,
+    sessionId?: string,
     options?: ChatModelOptions,
   ) {
     await ChatModel.Initialize(db, userId);
 
-    if (!chatId) {
+    if (!sessionId) {
       return ChatModel.New(db, userId, options);
     }
 
-    const exists = await db.exists(ChatModel.Key(userId, chatId));
+    const exists = await db.exists(ChatModel.Key(userId, sessionId));
     const requiredOptions = ChatModel.DefaultOptions(options);
 
     if (!exists) {
       return ChatModel.New(db, userId, requiredOptions);
     }
 
-    return new ChatModel(db, userId, chatId, requiredOptions);
+    return new ChatModel(db, userId, sessionId, requiredOptions);
   }
 
   static async AllChats(
@@ -123,7 +124,7 @@ export class ChatModel {
     options = ChatModel.DefaultOptions(options);
 
     const all = await db.ft.search(ChatModel.Index(userId), "*", {
-      RETURN: ["userId", "chatId", "summary", "lastSummarizedAt"],
+      RETURN: ["userId", "sessionId", "summary", "lastSummarizedAt"],
     });
 
     if (all.total <= 0) {
@@ -133,10 +134,10 @@ export class ChatModel {
     return Promise.all(
       all.documents.map(async ({ id, value }) => {
         const dbChat = value as unknown as Omit<Chat, "messages">;
-        const model = await ChatModel.FromChatId(
+        const model = await ChatModel.FromSessionId(
           db,
           userId,
-          dbChat.chatId,
+          dbChat.sessionId,
           options,
         );
         const messages = [];
@@ -167,20 +168,20 @@ export class ChatModel {
 
   db: RedisClient;
   userId: string;
-  chatId: string;
+  sessionId: string;
   chatKey: string;
   options: Required<ChatModelOptions>;
 
   constructor(
     db: RedisClient,
     userId: string,
-    chatId: string,
+    sessionId: string,
     options: Required<ChatModelOptions>,
   ) {
     this.db = db;
     this.userId = userId;
-    this.chatId = chatId;
-    this.chatKey = ChatModel.Key(userId, chatId);
+    this.sessionId = sessionId;
+    this.chatKey = ChatModel.Key(userId, sessionId);
     this.options = options;
   }
 
@@ -195,7 +196,7 @@ export class ChatModel {
 
     return {
       userId: this.userId,
-      chatId: this.chatId,
+      sessionId: this.sessionId,
       summary: summaries?.summary ?? "",
       lastSummarizedAt: summaries?.lastSummarizedAt ?? 0,
     };
@@ -254,16 +255,24 @@ export class ChatModel {
   }
 
   async push(newMessage: CreateMessage): Promise<ChatMessage> {
-    const message = {
+    const message: ChatMessage = {
       id: this.options.createUid(),
       role: newMessage.role,
       content: newMessage.content,
-      timestamp: Date.now(),
+      createdAt: new Date().toISOString(),
+      extracted: "f",
     };
 
-    await this.db.json.arrAppend(this.chatKey, "$.messages", message);
+    await this.db.json.arrAppend(this.chatKey, "$.messages", message as any);
 
     return message;
+  }
+
+  async updateSummary(summary: string): Promise<void> {
+    await this.db.json.merge(this.chatKey, "$", {
+      summary,
+      lastSummarizedAt: Date.now(),
+    });
   }
 
   async clear(): Promise<void> {
@@ -278,7 +287,7 @@ export class ChatModel {
       ? ((await this.db.json.get(this.chatKey)) as unknown as Chat)
       : {
           userId: this.userId,
-          chatId: this.chatId,
+          sessionId: this.sessionId,
           summary: "",
           lastSummarizedAt: Date.now(),
           messages: [],

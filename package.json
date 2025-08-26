@@ -25,6 +25,7 @@
     "@ai-sdk/openai": "^2.0.19",
     "ai": "^5.0.22",
     "connect-redis": "^9.0.0",
+    "dayjs": "^1.11.13",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "express-handlebars": "^8.0.3",
