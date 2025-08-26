@@ -10,7 +10,7 @@ ws.onmessage = (ev) => {
     case "debug":
       logColor = "color:green";
       log = console.debug;
-      break;
+      return;
     case "info":
       logColor = "color:gray";
       log = console.info;

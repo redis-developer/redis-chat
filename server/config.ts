@@ -28,13 +28,13 @@ const config = {
       process.env.OPENAI_EMBEDDINGS_DIMENSIONS ?? "1536",
       10,
     ),
-    CHAT_MODEL: process.env.OPENAI_CHAT_MODEL || "gpt-5",
+    CHAT_MODEL: process.env.OPENAI_CHAT_MODEL || "gpt-5-mini",
   },
   google: {
     CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",
     PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID || "my-project-id",
     LOCATION: process.env.GOOGLE_CLOUD_LOCATION || "us-west1",
-    CHAT_MODEL: process.env.GOOGLE_CHAT_MODEL || "gemini-2.0-flash-lite",
+    CHAT_MODEL: process.env.GOOGLE_CHAT_MODEL || "gemini-2.5-flash",
     EMBEDDINGS_MODEL:
       process.env.GOOGLE_EMBEDDINGS_MODEL || "gemini-embedding-001",
     EMBEDDINGS_DIMENSIONS: parseInt(

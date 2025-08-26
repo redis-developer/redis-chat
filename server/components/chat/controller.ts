@@ -59,7 +59,7 @@ export async function clearChat(
   chatId: string,
 ) {
   try {
-    logger.info(`Clearing messages for user \`${userId}\``, {
+    logger.debug(`Clearing messages for user \`${userId}\``, {
       userId: userId,
     });
 
@@ -83,7 +83,7 @@ export async function clearMemory(
   userId: string,
 ) {
   try {
-    logger.info("Clearing Redis", {
+    logger.debug("Clearing Redis", {
       userId,
     });
     await flush(userId);
@@ -191,7 +191,7 @@ export async function processChat(
       content: message,
     });
 
-    logger.info(`Message added for user \`${userId}\``, {
+    logger.debug(`Message added for user \`${userId}\``, {
       userId,
     });
 
@@ -206,7 +206,7 @@ export async function processChat(
 
     response = await chat.push(response);
 
-    logger.info(`Bot message added to stream for user \`${userId}\``, {
+    logger.debug(`Bot message added to stream for user \`${userId}\``, {
       userId,
     });
 
@@ -219,7 +219,6 @@ export async function processChat(
 
     return chatId;
   } catch (error) {
-    console.log(error);
     logger.error(`Error handling message:`, {
       error,
       userId,
@@ -255,7 +254,7 @@ export async function newChat(
   userId: string,
 ): Promise<string> {
   try {
-    logger.info(`Creating new chat for user \`${userId}\``, {
+    logger.debug(`Creating new chat for user \`${userId}\``, {
       userId,
     });
     const newChat = await memory.ChatModel.New(getClient(), userId, {
@@ -307,7 +306,7 @@ export async function switchChat(
   chatId: string,
 ) {
   try {
-    logger.info(`Switching to chat \`${chatId}\` for user \`${userId}\``, {
+    logger.debug(`Switching to chat \`${chatId}\` for user \`${userId}\``, {
       userId,
     });
     const db = getClient();
@@ -359,7 +358,7 @@ export async function initializeChat(
   chatId: string,
 ) {
   try {
-    logger.info(`Initializing chat for user \`${userId}\``, {
+    logger.debug(`Initializing chat for user \`${userId}\``, {
       userId,
     });
 

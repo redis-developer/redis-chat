@@ -108,7 +108,7 @@ export async function answerPrompt(
             
             - When answering the prompt, if you have obtained relevant information from memory using the \`${searchTool.name}\` tool, use that information to construct your answer.
             - Make sure you add any relevant information from the prompt to either "semantic" or "long-term" memory using the \`${addMemoryTool.name}\` tool so that you can lookup that information in future interactions.
-            - Only use the tools with the latest message, do not use tools on prior messages.
+            - Only add memories based on the latest message, do not add memories for prior messages.
           `,
       },
       ...messages,

@@ -4,7 +4,7 @@
         <form ws-send hx-disabled-elt="this" class="block w-full">
             <input type="hidden" name="cmd" value="switch_chat" />
             <input type="hidden" name="chatId" value="{{chatId}}" />
-            <button type="submit" class="block w-full p-2 text-left text-gray-600">
+            <button type="submit" class="block w-full text-xs p-2 text-left text-gray-600">
                 {{!-- Trim the end and add an elipsis --}}
                 {{message}}
             </button>

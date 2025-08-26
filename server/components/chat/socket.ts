@@ -81,10 +81,6 @@ function onConnection(ws: WebSocket, req: Request) {
             return;
           }
           if (form.chatId === currentChatId) {
-            logger.warn("Attempted to switch to the current chat", {
-              userId,
-              chatId: form.chatId,
-            });
             return;
           }
 
