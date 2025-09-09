@@ -1,7 +1,7 @@
 import express from "express";
 import { engine } from "express-handlebars";
 import type { HelperOptions } from "handlebars";
-import session from "./utils/session";
+import { getSessionParser } from "./utils/session";
 import { ctrl } from "./components/chat";
 
 const app = express();
@@ -28,7 +28,10 @@ app.engine(
 );
 app.set("view engine", "hbs");
 app.set("views", "./views");
-app.use(session);
+app.use(async (req, res, next) => {
+  const session = await getSessionParser();
+  session(req, res, next);
+});
 
 app.get("/", async (req, res) => {
   const userId = req.session.id;

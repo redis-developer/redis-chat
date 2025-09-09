@@ -4,7 +4,7 @@ import getClient from "../redis";
 import { LEVEL, SPLAT } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
-import session from "./session";
+import { getSessionParser } from "./session";
 
 interface TransportInfo {
   level: string;
@@ -55,23 +55,25 @@ class RedisTransport extends Transport {
 
       let metaStr = typeof meta === "string" ? meta : JSON.stringify(meta);
 
-      const redis = getClient();
-      // Don't await this so the app can keep moving.
-      void redis.xAdd(config.log.LOG_STREAM, "*", {
-        service: config.app.SERVICE_NAME,
-        level,
-        message,
-        meta: metaStr,
-      });
-
-      if (level.toLowerCase() === "error") {
-        void redis.xAdd(config.log.ERROR_STREAM, "*", {
+      (async () => {
+        const redis = await getClient();
+        // Don't await this so the app can keep moving.
+        void redis.xAdd(config.log.LOG_STREAM, "*", {
           service: config.app.SERVICE_NAME,
           level,
           message,
           meta: metaStr,
         });
-      }
+
+        if (level.toLowerCase() === "error") {
+          void redis.xAdd(config.log.ERROR_STREAM, "*", {
+            service: config.app.SERVICE_NAME,
+            level,
+            message,
+            meta: metaStr,
+          });
+        }
+      })();
     } catch (e) {}
 
     callback();
@@ -181,7 +183,8 @@ class WebsocketTransport extends Transport {
   /**
    * Handles WebSocket connections and messages.
    */
-  onConnection(ws: import("ws").WebSocket, req: import("express").Request) {
+  async onConnection(ws: import("ws").WebSocket, req: import("express").Request) {
+    const session = await getSessionParser();
     session(req, {} as any, async () => {
       const userId = req.session.id;
 

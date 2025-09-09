@@ -3,16 +3,16 @@ import type { WebSocket } from "ws";
 import type { Request } from "express";
 import logger, { logWst } from "../../utils/log";
 import { randomUlid } from "../../utils/uid";
-import session from "../../utils/session";
+import { getSessionParser } from "../../utils/session";
 import * as ctrl from "./controller";
-import * as view from "./view";
 
 export const wss = new WebSocketServer({ noServer: true });
 
 /**
  * Handles WebSocket connections and messages.
  */
-function onConnection(ws: WebSocket, req: Request) {
+async function onConnection(ws: WebSocket, req: Request) {
+  const session = await getSessionParser();
   session(req, {} as any, async () => {
     const userId = req.session.id;
 

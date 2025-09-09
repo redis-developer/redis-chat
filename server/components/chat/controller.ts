@@ -7,7 +7,7 @@ import * as memory from "../memory";
 import { Tools } from "../memory";
 
 async function flush(userId: string) {
-  const db = getClient();
+  const db = await getClient();
   const keys = await db.keys("users:*");
   const semantic = await db.keys("semantic-memory*");
 
@@ -28,12 +28,12 @@ async function flush(userId: string) {
       })
       .map(async (index) => {
         await db.ft.dropIndex(index);
-      }),
+      })
   );
 }
 
 async function getChat(userId: string, chatId?: string) {
-  const redis = getClient();
+  const redis = await getClient();
 
   return memory.ChatModel.FromChatId(redis, userId, chatId, {
     createUid: () => randomUlid(),
@@ -41,7 +41,7 @@ async function getChat(userId: string, chatId?: string) {
 }
 
 async function getWorkingMemory(userId: string) {
-  const redis = getClient();
+  const redis = await getClient();
 
   return memory.WorkingMemoryModel.New(redis, userId, {
     createUid: () => randomUlid(),
@@ -56,7 +56,7 @@ async function getWorkingMemory(userId: string) {
 export async function clearChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  chatId: string
 ) {
   try {
     logger.debug(`Clearing messages for user \`${userId}\``, {
@@ -80,7 +80,7 @@ export async function clearChat(
  */
 export async function clearMemory(
   send: (message: string) => void,
-  userId: string,
+  userId: string
 ) {
   try {
     logger.debug("Clearing Redis", {
@@ -115,7 +115,7 @@ export async function ask(userId: string, chatId: string) {
       `Retrieved ${messages.length} messages from user \`${userId}\``,
       {
         userId,
-      },
+      }
     );
 
     logger.info(`Asking the LLM: ${question}`, {
@@ -129,7 +129,7 @@ export async function ask(userId: string, chatId: string) {
         `Found ${existingResult.length} existing semantic memory entries for question: ${question}`,
         {
           userId,
-        },
+        }
       );
 
       return existingResult[0].answer;
@@ -138,7 +138,7 @@ export async function ask(userId: string, chatId: string) {
         `No existing semantic memory found for question: ${question}`,
         {
           userId,
-        },
+        }
       );
     }
 
@@ -168,7 +168,7 @@ export async function processChat(
     userId,
     chatId,
     message,
-  }: { userId: string; chatId?: string; message: string },
+  }: { userId: string; chatId?: string; message: string }
 ): Promise<string> {
   let botResponseSent = false;
   const chat = await getChat(userId, chatId);
@@ -236,7 +236,7 @@ export async function processChat(
         view.renderMessage({
           replaceId: botId,
           ...message,
-        }),
+        })
       );
     } else {
       send(view.renderMessage(message));
@@ -251,19 +251,23 @@ export async function processChat(
  */
 export async function newChat(
   send: (message: string) => void,
-  userId: string,
+  userId: string
 ): Promise<string> {
   try {
     logger.debug(`Creating new chat for user \`${userId}\``, {
       userId,
     });
-    const newChat = await memory.ChatModel.New(getClient(), userId, {
+    const newChat = await memory.ChatModel.New(await getClient(), userId, {
       createUid: () => randomUlid(),
     });
     const newChatId = newChat.chatId;
-    const existingChats = await memory.ChatModel.AllChats(getClient(), userId, {
-      createUid: () => randomUlid(),
-    });
+    const existingChats = await memory.ChatModel.AllChats(
+      await getClient(),
+      userId,
+      {
+        createUid: () => randomUlid(),
+      }
+    );
 
     const chats = [
       ...existingChats.map((chat) => {
@@ -278,13 +282,13 @@ export async function newChat(
       view.renderChats({
         chats,
         currentChatId: newChatId,
-      }),
+      })
     );
 
     send(
       view.clearMessages({
         placeholder: true,
-      }),
+      })
     );
 
     return newChatId;
@@ -303,13 +307,13 @@ export async function newChat(
 export async function switchChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  chatId: string
 ) {
   try {
     logger.debug(`Switching to chat \`${chatId}\` for user \`${userId}\``, {
       userId,
     });
-    const db = getClient();
+    const db = await getClient();
     const options = {
       createUid: () => randomUlid(),
     };
@@ -325,13 +329,13 @@ export async function switchChat(
           };
         }),
         currentChatId: chatId,
-      }),
+      })
     );
 
     send(
       view.clearMessages({
         placeholder: false,
-      }),
+      })
     );
 
     const chat = await memory.ChatModel.FromChatId(db, userId, chatId, options);
@@ -355,14 +359,14 @@ export async function switchChat(
 export async function initializeChat(
   send: (message: string) => void,
   userId: string,
-  chatId: string,
+  chatId: string
 ) {
   try {
     logger.debug(`Initializing chat for user \`${userId}\``, {
       userId,
     });
 
-    const db = getClient();
+    const db = await getClient();
     const options = {
       createUid: () => randomUlid(),
     };
@@ -373,7 +377,7 @@ export async function initializeChat(
     send(
       view.clearMessages({
         placeholder,
-      }),
+      })
     );
 
     for (const message of messages) {
@@ -396,9 +400,13 @@ export async function getAllChats(userId: string) {
       userId,
     });
 
-    const existingChats = await memory.ChatModel.AllChats(getClient(), userId, {
-      createUid: () => randomUlid(),
-    });
+    const existingChats = await memory.ChatModel.AllChats(
+      await getClient(),
+      userId,
+      {
+        createUid: () => randomUlid(),
+      }
+    );
 
     return existingChats.map((chat) => {
       return {

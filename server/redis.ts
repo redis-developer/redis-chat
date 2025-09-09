@@ -1,5 +1,5 @@
 import config from "./config";
-import { createClient } from "redis";
+import { BasicClientSideCache, createClient } from "redis";
 import type {
   RedisClientOptions,
   RedisClientType,
@@ -12,13 +12,16 @@ if (!config.redis.URL) {
 
 export type RedisClient = RedisClientType<RedisDefaultModules, {}, {}, 2, {}>;
 
-let clients: Record<string, RedisClient> = {};
-let maxRetries = 5;
-
+let clients: Record<string, Promise<RedisClient>> = {};
 let retries: Record<string, number> = {};
-let connectionsRefused: Record<string, boolean> = {};
 
-export default function getClient(options?: RedisClientOptions): RedisClient {
+async function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export default async function getClient(
+  options?: RedisClientOptions,
+): Promise<RedisClient> {
   options = Object.assign(
     {},
     {
@@ -31,59 +34,48 @@ export default function getClient(options?: RedisClientOptions): RedisClient {
     throw new Error("You must pass a URL to connect");
   }
 
-  let client = clients[options.url];
+  const clientPromise = clients[options.url];
 
-  if (client) {
-    return client;
+  if (clientPromise) {
+    return clientPromise;
   }
 
   try {
-    client = createClient(options) as RedisClient;
+    const client = createClient(options) as RedisClient;
 
-    client
-      .on("error", (err) => {
-        const url = options.url ?? "";
+    client.on("error", async (err) => {
+      const url = options.url ?? "";
 
-        if (/ECONNREFUSED/.test(err.message)) {
-          if (!connectionsRefused[url]) {
-            connectionsRefused[url] = true;
+      console.error("Redis Client Error");
+      console.error(err);
 
-            console.error("Redis Client Error", {
-              error: err,
-              noStream: true,
-            });
-          }
-          return;
-        }
+      try {
+        client.destroy();
+        await client.close();
+      } catch (err) {}
 
-        console.error("Redis Client Error", {
-          error: err,
-          noStream: true,
-        });
-
-        try {
-          client.destroy();
-        } catch (err) {}
-
-        const clientRetries = retries[url] ?? 0;
-
-        if (clientRetries < maxRetries) {
-          retries[url] = clientRetries + 1;
-          try {
-            void refreshClient(client);
-          } catch (e) {}
-        }
-      })
-      .connect();
-
-    clients[options.url] = client;
-
-    return client;
-  } catch (err) {
-    console.error("Error creating Redis client:", {
-      error: err,
-      noStream: true,
+      const clientRetries = retries[url] ?? 0;
+      retries[url] = clientRetries + 1;
+      try {
+        // Exponential backoff with jitter
+        await wait(2 ** ((clientRetries % 10) + 1) * 10);
+        console.log(
+          `${clientRetries} connection failures, reconnecting to Redis...`,
+        );
+        await refreshClient(client);
+      } catch (e) {}
     });
+
+    clients[options.url] = new Promise(async (resolve) => {
+      await client.connect();
+
+      resolve(client);
+    });
+
+    return clients[options.url];
+  } catch (err) {
+    console.error("Error creating Redis client:");
+    console.error(err);
 
     throw err;
   }
@@ -97,6 +89,6 @@ async function refreshClient(client: RedisClient) {
       delete clients[options?.url];
     }
 
-    getClient(options);
+    await getClient(options);
   }
 }

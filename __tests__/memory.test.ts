@@ -6,7 +6,7 @@ import SemanticMemoryModel from "../server/components/memory/semantic";
 import WorkingMemoryModel from "../server/components/memory/working";
 import getClient from "../server/redis";
 
-const db = getClient();
+const db = await getClient();
 const userId = "123";
 
 async function flush() {
