@@ -17,6 +17,7 @@ export interface LongTermMemoryModelOptions {
   embed?(text: string): Promise<number[]>;
   distanceThreshold?: number;
   topK?: number;
+  ttl?: number;
 }
 
 export class LongTermMemoryModel {
@@ -99,6 +100,7 @@ export class LongTermMemoryModel {
         },
         distanceThreshold: 0.4,
         topK: 1,
+        ttl: -1,
       } as LongTermMemoryModelOptions,
       options,
     );
@@ -179,6 +181,8 @@ export class LongTermMemoryModel {
       embedding,
     });
 
+    ttl = ttl ?? this.options.ttl;
+
     if (ttl && ttl > 0) {
       await this.db.expire(key, ttl);
     }
@@ -197,7 +201,10 @@ export class LongTermMemoryModel {
       embedding,
     });
 
+    ttl = ttl ?? this.options.ttl;
+
     if (ttl && ttl > 0) {
+      await this.db.persist(key);
       await this.db.expire(key, ttl);
     }
 

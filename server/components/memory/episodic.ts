@@ -2,7 +2,7 @@ import { SCHEMA_FIELD_TYPE, SCHEMA_VECTOR_FIELD_ALGORITHM } from "redis";
 import type { RediSearchSchema } from "redis";
 import type { RedisClient } from "../../redis";
 import { randomUlid } from "../../utils/uid";
-import { float32ToBuffer } from "../../utils/convert";
+import { escapeDashes, float32ToBuffer } from "../../utils/convert";
 import type { WithDistance } from "./types";
 
 export interface EpisodicMemoryEntry {
@@ -16,6 +16,7 @@ export interface EpisodicMemoryModelOptions {
   embed?(text: string): Promise<number[]>;
   distanceThreshold?: number;
   topK?: number;
+  ttl?: number;
 }
 
 export class EpisodicMemoryModel {
@@ -94,6 +95,7 @@ export class EpisodicMemoryModel {
         },
         distanceThreshold: 0.4,
         topK: 1,
+        ttl: -1,
       } as EpisodicMemoryModelOptions,
       options,
     );
@@ -166,6 +168,8 @@ export class EpisodicMemoryModel {
       embedding,
     });
 
+    ttl = ttl ?? this.options.ttl;
+
     if (ttl && ttl > 0) {
       await this.db.expire(key, ttl);
     }
@@ -176,7 +180,7 @@ export class EpisodicMemoryModel {
   async update(chatId: string, summary: string, ttl?: number) {
     const dbModel = await this.db.ft.search(
       EpisodicMemoryModel.Index(this.userId),
-      `@chatId:{"${chatId}"}`,
+      `@chatId:{"${escapeDashes(chatId)}"}`,
       {
         LIMIT: {
           from: 0,
@@ -198,6 +202,13 @@ export class EpisodicMemoryModel {
       chatId,
       embedding,
     });
+
+    ttl = ttl ?? this.options.ttl;
+
+    if (ttl && ttl > 0) {
+      await this.db.persist(id);
+      await this.db.expire(id, ttl);
+    }
   }
 }
 

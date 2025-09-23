@@ -1,0 +1,37 @@
+{{!-- A sidebar that allows creating new threads and switching to past threads --}}
+<nav class="flex flex-col bg-gray-800 h-full w-64 border-r border-gray-700 p-4">
+  <h2 class="text-lg font-semibold mb-4 text-gray-100">Chat</h2>
+  <ul class="my-2 list-none">
+    <li class="truncate cursor-pointer rounded hover:bg-gray-700 active:bg-gray-600">
+        <form ws-send hx-disabled-elt="this" class="block w-full">
+            <input type="hidden" name="cmd" value="chats/new" />
+            <button type="submit" class="block w-full p-2 text-left text-gray-300">
+            + New chat
+            </button>
+        </form>
+    </li>
+  </ul>
+  <p class="text-md text-gray-400 my-2">Chats</p>
+  <ul id="sidebarChats">
+    {{> chat/sidebar/chats}}
+  </ul>
+  <div class="grow"></div>
+  <ul class="list-none">
+      <li class="text-xs text-gray-400 cursor-pointer">
+          <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
+              <input type="hidden" name="cmd" value="users/new" />
+              <button type="submit" class="block w-full p-2 text-left text-gray-300 hover:bg-gray-700 active:bg-gray-600">
+                  + New user
+              </button>
+          </form>
+      </li>
+      <li class="text-xs text-gray-400 cursor-pointer">
+          <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
+              <input type="hidden" name="cmd" value="data/clear" />
+              <button type="submit" class="block w-full p-2 text-left text-red-300 hover:text-gray-300 active:text-gray-300 hover:bg-red-700 active:bg-red-600">
+                  🗑 Reset user
+              </button>
+          </form>
+      </li>
+  </ul>
+</nav>

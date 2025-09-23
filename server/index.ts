@@ -3,7 +3,7 @@ import app from "./app";
 import logger, { logWss } from "./utils/log";
 import { IncomingMessage } from "http";
 import { Duplex } from "stream";
-import * as chat from "./components/chat";
+import { socket as orchestrator } from "./components/orchestrator";
 
 const port = config.env.PORT;
 
@@ -23,17 +23,21 @@ function onUpgrade(
   if (url.includes("wss://")) {
     url = new URL(url).pathname;
   }
-
-  if (url === "/chat") {
-    chat.socket.wss.handleUpgrade(req, socket, head, (ws) => {
-      chat.socket.wss.emit("connection", ws, req);
-    });
-  } else if (url === "/log") {
-    logWss.handleUpgrade(req, socket, head, (ws) => {
-      logWss.emit("connection", ws, req);
-    });
-  } else {
-    socket.destroy();
+  switch (url) {
+    case "/chat":
+      orchestrator.wss.handleUpgrade(req, socket, head, (ws) => {
+        orchestrator.wss.emit("connection", ws, req, "chat");
+      });
+      break;
+    case "/log":
+      logWss.handleUpgrade(req, socket, head, (ws) => {
+        logWss.emit("connection", ws, req);
+      });
+      break;
+    default:
+      logger.warn(`Unknown WebSocket upgrade request to ${url}`);
+      socket.destroy();
+      return;
   }
 }
 

@@ -2,7 +2,10 @@ import express from "express";
 import { engine } from "express-handlebars";
 import type { HelperOptions } from "handlebars";
 import { getSessionParser } from "./utils/session";
-import { ctrl } from "./components/chat";
+import { ctrl as chat } from "./components/chats";
+import { ctrl as orchestrator } from "./components/orchestrator";
+
+export async function initialize() {}
 
 const app = express();
 app.use(express.static("public"));
@@ -29,6 +32,10 @@ app.engine(
 app.set("view engine", "hbs");
 app.set("views", "./views");
 app.use(async (req, res, next) => {
+  await initialize();
+  next();
+});
+app.use(async (req, res, next) => {
   const session = await getSessionParser();
   session(req, res, next);
 });
@@ -37,13 +44,13 @@ app.get("/", async (req, res) => {
   const userId = req.session.id;
   // @ts-ignore
   const currentChatId = req.session.currentChatId;
-  const chats = await ctrl.getAllChats(userId);
+  await orchestrator.removeEmptyChats(userId, currentChatId);
+  const chats = await chat.getChatsWithTopMessage(userId);
 
   res.render("index", {
     userId,
     currentChatId,
     chats,
-    placeholder: !currentChatId,
   });
 });
 

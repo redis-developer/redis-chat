@@ -31,6 +31,7 @@ export interface WorkingMemoryModelOptions {
   embed?(text: string): Promise<number[]>;
   distanceThreshold?: number;
   topK?: number;
+  ttl?: number;
 }
 
 export class WorkingMemoryModel {
@@ -85,7 +86,8 @@ export class WorkingMemoryModel {
           throw new Error("You must provide an embed function");
         },
         distanceThreshold: 0.4,
-        topK: 1,
+        topK: 20,
+        ttl: -1,
       } as WorkingMemoryModelOptions,
       options,
     );
@@ -163,6 +165,17 @@ export class WorkingMemoryModel {
   }
 
   async addSemanticMemory(question: string, answer: string, ttl?: number) {
+    const existing = await this.searchSemanticMemory(question);
+
+    if (existing.length > 0) {
+      return this.semanticMemoryModel.update(
+        existing[0].id,
+        question,
+        answer,
+        ttl,
+      );
+    }
+
     return this.semanticMemoryModel.add(question, answer, ttl);
   }
 
@@ -188,16 +201,18 @@ export class WorkingMemoryModel {
   }
 
   async addLongTermMemory(question: string, answer: string, ttl?: number) {
-    return this.longTermMemoryModel.add(question, answer, ttl);
-  }
+    const existing = await this.search(question);
 
-  async updateLongTermMemory(
-    id: string,
-    question: string,
-    answer: string,
-    ttl?: number,
-  ) {
-    return this.longTermMemoryModel.update(id, question, answer, ttl);
+    if (existing.length > 0 && existing[0].type === "long-term") {
+      return this.longTermMemoryModel.update(
+        existing[0].id,
+        question,
+        answer,
+        ttl,
+      );
+    }
+
+    return this.longTermMemoryModel.add(question, answer, ttl);
   }
 }
 

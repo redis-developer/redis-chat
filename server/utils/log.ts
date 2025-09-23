@@ -1,9 +1,10 @@
 import { WebSocketServer } from "ws";
 import config from "../config";
 import getClient from "../redis";
-import { LEVEL, SPLAT } from "triple-beam";
+import { LEVEL, SPLAT, MESSAGE } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
+import { format } from "logform";
 import { getSessionParser } from "./session";
 
 interface TransportInfo {
@@ -39,6 +40,7 @@ class RedisTransport extends Transport {
       const level = info.level;
       let message = info.message;
       let meta = (info[SPLAT]?.[0] ?? "{}") as Meta;
+      meta = Object.assign({}, meta);
 
       if (typeof message !== "string") {
         message = JSON.stringify(message);
@@ -100,6 +102,7 @@ class WebsocketTransport extends Transport {
       const level = info.level;
       let message = info.message;
       let meta = info[SPLAT]?.[0] as Meta | undefined;
+      meta = Object.assign({}, meta);
 
       if (!meta?.userId) {
         callback();
@@ -183,7 +186,10 @@ class WebsocketTransport extends Transport {
   /**
    * Handles WebSocket connections and messages.
    */
-  async onConnection(ws: import("ws").WebSocket, req: import("express").Request) {
+  async onConnection(
+    ws: import("ws").WebSocket,
+    req: import("express").Request,
+  ) {
     const session = await getSessionParser();
     session(req, {} as any, async () => {
       const userId = req.session.id;
@@ -222,6 +228,36 @@ export const logWss = new WebSocketServer({ noServer: true });
 export const logWst = new WebsocketTransport();
 logWss.on("connection", logWst.onConnection.bind(logWst));
 
+const consoleFormat = format((info) => {
+  const level = info.level;
+  let message = info.message;
+  let meta = ((info as any)[SPLAT]?.[0] ?? "{}") as Meta;
+  meta = Object.assign({}, meta);
+
+  if (typeof message !== "string") {
+    message = JSON.stringify(message);
+  }
+
+  if (meta?.error) {
+    if (meta.error.stack) {
+      console.log(meta.error);
+    }
+
+    meta.error = new EnumerableError(meta.error.message);
+  }
+
+  let metaStr = typeof meta === "string" ? meta : JSON.stringify(meta);
+
+  const padding = (info.padding && (info as any).padding[level]) || "";
+  if (metaStr.length > 0 && metaStr !== "{}") {
+    info[MESSAGE] = `${level}:${padding} ${info.message} ${metaStr}`;
+  } else {
+    info[MESSAGE] = `${level}:${padding} ${info.message}`;
+  }
+
+  return info;
+});
+
 const logger = winston.createLogger({
   level: config.log.LEVEL.toLowerCase(),
   format: winston.format.json(),
@@ -230,7 +266,7 @@ const logger = winston.createLogger({
     new RedisTransport(),
     logWst,
     new winston.transports.Console({
-      format: winston.format.simple(),
+      format: consoleFormat(),
     }),
   ],
 });

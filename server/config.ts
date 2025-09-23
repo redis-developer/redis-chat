@@ -18,7 +18,12 @@ const config = {
   },
   anthropic: {
     API_KEY: process.env.ANTHROPIC_API_KEY || "",
-    CHAT_MODEL: process.env.ANTHROPIC_CHAT_MODEL || "claude-3-5-sonnet-latest",
+    LARGE_CHAT_MODEL:
+      process.env.ANTHROPIC_LARGE_CHAT_MODEL || "claude-opus-4-1",
+    MEDIUM_CHAT_MODEL:
+      process.env.ANTHROPIC_MEDIUM_CHAT_MODEL || "claude-opus-4-0",
+    SMALL_CHAT_MODEL:
+      process.env.ANTHROPIC_SMALL_CHAT_MODEL || "claude-sonnet-4-0",
   },
   openai: {
     API_KEY: process.env.OPENAI_API_KEY || "",
@@ -28,13 +33,19 @@ const config = {
       process.env.OPENAI_EMBEDDINGS_DIMENSIONS ?? "1536",
       10,
     ),
-    CHAT_MODEL: process.env.OPENAI_CHAT_MODEL || "gpt-5-mini",
+    LARGE_CHAT_MODEL: process.env.OPENAI_LARGE_CHAT_MODEL || "gpt-5",
+    MEDIUM_CHAT_MODEL: process.env.OPENAI_MEDIUM_CHAT_MODEL || "gpt-5-mini",
+    SMALL_CHAT_MODEL: process.env.OPENAI_SMALL_CHAT_MODEL || "gpt-5-nano",
   },
   google: {
     CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",
     PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID || "my-project-id",
     LOCATION: process.env.GOOGLE_CLOUD_LOCATION || "us-west1",
-    CHAT_MODEL: process.env.GOOGLE_CHAT_MODEL || "gemini-2.5-flash",
+    LARGE_CHAT_MODEL: process.env.GOOGLE_LARGE_CHAT_MODEL || "gemini-2.5-pro",
+    MEDIUM_CHAT_MODEL:
+      process.env.GOOGLE_MEDIUM_CHAT_MODEL || "gemini-2.5-flash",
+    SMALL_CHAT_MODEL:
+      process.env.GOOGLE_SMALL_CHAT_MODEL || "gemini-2.5-flash-lite",
     EMBEDDINGS_MODEL:
       process.env.GOOGLE_EMBEDDINGS_MODEL || "gemini-embedding-001",
     EMBEDDINGS_DIMENSIONS: parseInt(
@@ -44,6 +55,7 @@ const config = {
   },
   redis: {
     URL: process.env.REDIS_URL || "redis://localhost:6379",
+    DEFAULT_TTL: parseInt(process.env.REDIS_DEFAULT_TTL || "-1", 10), // in seconds, -1 = never expire
     SESSION_SECRET:
       process.env.REDIS_SESSION_SECRET || "default_session_secret",
     SESSION_PREFIX: process.env.REDIS_SESSION_PREFIX || "session:",

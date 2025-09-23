@@ -1,0 +1,14 @@
+<ul hx-swap-oob="outerHTML:#sidebarChats" id="sidebarChats" class="my-2 list-none overflow-y-auto">
+  {{#each chats}}
+    <li class="truncate cursor-pointer rounded hover:bg-gray-700 active:bg-gray-600{{#ifEqual a=chatId b=../currentChatId}} bg-gray-600{{/ifEqual}}">
+      <form ws-send hx-disabled-elt="this" class="block w-full">
+          <input type="hidden" name="cmd" value="chats/switch" />
+          <input type="hidden" name="chatId" value="{{chatId}}" />
+          <button type="submit" class="block w-full text-xs p-2 text-left text-gray-300">
+              {{!-- Trim the end and add an elipsis --}}
+              {{message}}
+          </button>
+      </form>
+    </li>
+  {{/each}}
+</ul>

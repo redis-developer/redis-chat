@@ -10,12 +10,21 @@ export const searchToolInput = z.object({
     .describe("The search query, could be phrased in the form of a question"),
 });
 
-export const addMemoryToolInput = z.object({
-  type: z
-    .enum(["semantic", "long-term"])
+export const addSemanticMemoryToolInput = z.object({
+  question: z
+    .string()
+    .min(1)
+    .describe(`The question to use to retrieve the memory later.`),
+  answer: z.string().min(1).describe(`The answer to the question.`),
+  ttl: z
+    .number()
+    .optional()
     .describe(
-      "For user-specific information that should be remembered over time, use 'long-term'. For general information that could apply to any user, use 'semantic'.",
+      "If the question result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
     ),
+});
+
+export const addLongTermMemoryToolInput = z.object({
   question: z
     .string()
     .min(1)
@@ -38,7 +47,7 @@ export const addMemoryToolInput = z.object({
 
 export const updateMemoryToolInput = z.object({
   type: z
-    .enum(["semantic", "long-term"])
+    .enum(["long-term"])
     .describe(
       "For user-specific information that should be remembered over time, use 'long-term'. For general information that could apply to any user, use 'semantic'.",
     ),
@@ -78,8 +87,8 @@ export class Tools {
   getTools() {
     return {
       searchTool: this.getSearchTool(),
-      addMemoryTool: this.getAddMemoryTool(),
-      updateMemoryTool: this.getUpdateMemoryTool(),
+      addSemanticMemoryTool: this.getAddSemanticMemoryTool(),
+      addLongTermMemoryTool: this.getAddLongTermMemoryTool(),
     };
   }
 
@@ -100,42 +109,40 @@ export class Tools {
     return searchTool;
   }
 
-  getAddMemoryTool(): Tool & { name: string } {
-    const addMemoryTool: Tool & { name: string } = Object.freeze({
-      description: `Add a new memory entry to working memory. Use this to remember new information about the user or general information that could apply to any user. Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
-      inputSchema: addMemoryToolInput,
-      name: "add_memory",
-      execute: ({ type, question, answer, ttl }) => {
-        logger.info(`Adding "${question}" to ${type} memory`, {
+  getAddSemanticMemoryTool(): Tool & { name: string } {
+    const addSemanticMemoryTool: Tool & { name: string } = Object.freeze({
+      description: `Add a new memory entry to semantic memory. Use this tool to store general facts and knowledge the applies to everyone.`,
+      inputSchema: addSemanticMemoryToolInput,
+      name: "add_semantic_memory",
+      execute: async ({ question, answer, ttl }) => {
+        logger.info(`Adding "${question}" to semantic memory`, {
           userId: this.workingMemoryModel.userId,
-          question,
+        });
+        await this.addMemory("semantic", question, answer, ttl);
+
+        return `Added memory for question: ${question}`;
+      },
+    });
+
+    return addSemanticMemoryTool;
+  }
+
+  getAddLongTermMemoryTool(): Tool & { name: string } {
+    const addMemoryTool: Tool & { name: string } = Object.freeze({
+      description: `Add a new memory entry to long-term memory. Use this to remember new information about the user. Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
+      inputSchema: addLongTermMemoryToolInput,
+      name: "add_long_term_memory",
+      execute: ({ question, answer, ttl }) => {
+        logger.info(`Adding "${question}" to long-term memory`, {
+          userId: this.workingMemoryModel.userId,
           answer,
           ttl,
         });
-        return this.addMemory(type, question, answer, ttl);
+        return this.addMemory("long-term", question, answer, ttl);
       },
     });
 
     return addMemoryTool;
-  }
-
-  getUpdateMemoryTool(): Tool & { name: string } {
-    const updateMemoryTool: Tool & { name: string } = Object.freeze({
-      description: `Update an existing memory entry in working memory. Use this to update information about the user or general information that could apply to any user. Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
-      inputSchema: updateMemoryToolInput,
-      name: "update_memory",
-      execute: ({ type, id, question, answer, ttl }) => {
-        logger.info(`Updating question "${id}" in ${type} memory`, {
-          userId: this.workingMemoryModel.userId,
-          question,
-          answer,
-          ttl,
-        });
-        return this.updateMemory(type, id, question, answer, ttl);
-      },
-    });
-
-    return updateMemoryTool;
   }
 
   async search(query: string) {
@@ -160,32 +167,6 @@ export class Tools {
       return this.workingMemoryModel.addSemanticMemory(question, answer, ttl);
     } else if (type === "long-term") {
       return this.workingMemoryModel.addLongTermMemory(question, answer, ttl);
-    } else {
-      throw new Error(`Unknown memory type: ${type}`);
-    }
-  }
-
-  async updateMemory(
-    type: "semantic" | "long-term",
-    id: string,
-    question: string,
-    answer: string,
-    ttl?: number,
-  ) {
-    if (type === "semantic") {
-      return this.workingMemoryModel.updateSemanticMemory(
-        id,
-        question,
-        answer,
-        ttl,
-      );
-    } else if (type === "long-term") {
-      return this.workingMemoryModel.updateLongTermMemory(
-        id,
-        question,
-        answer,
-        ttl,
-      );
     } else {
       throw new Error(`Unknown memory type: ${type}`);
     }

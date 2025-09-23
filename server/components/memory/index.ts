@@ -1,5 +1,5 @@
-export { ChatModel } from "./chat";
-export type { ChatMessage, CreateMessage } from "./chat";
+export { ShortTermMemoryModel } from "./short";
+export type { ShortTermMemory, CreateMemory } from "./short";
 export { EpisodicMemoryModel } from "./episodic";
 export type {
   EpisodicMemoryModelOptions,

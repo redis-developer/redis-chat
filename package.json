@@ -5,12 +5,12 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "deploy:css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css",
     "deploy:build": "bun build --target=bun . --outdir build/",
-    "dev": "bun run --bun concurrently npm:dev:*",
+    "dev": "bun run dev.ts",
     "dev:server": "bun run --watch .",
     "dev:css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css --watch",
     "docker": "docker compose down && docker compose up -d --build",
@@ -20,10 +20,11 @@
     "ts": "bunx tsc"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.15",
-    "@ai-sdk/google-vertex": "^3.0.25",
-    "@ai-sdk/openai": "^2.0.27",
-    "ai": "^5.0.39",
+    "@ai-sdk/anthropic": "^2.0.17",
+    "@ai-sdk/google-vertex": "^3.0.28",
+    "@ai-sdk/openai": "^2.0.33",
+    "@ai-sdk/rsc": "^1.0.50",
+    "ai": "^5.0.50",
     "connect-redis": "^9.0.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -31,13 +32,13 @@
     "express-session": "^1.18.2",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
-    "marked": "^16.2.1",
+    "marked": "^16.3.0",
     "redis": "^5.8.2",
     "ulid": "^3.0.1",
     "uuid": "^13.0.0",
     "winston": "^3.17.0",
     "ws": "^8.18.3",
-    "zod": "^4.1.5"
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@types/express-session": "^1.18.2",
@@ -46,7 +47,7 @@
     "prettier": "^3.6.2",
     "supertest": "^7.1.4",
     "tailwindcss": "^4.1.13",
-    "@types/bun": "^1.2.21"
+    "@types/bun": "^1.2.22"
   },
   "peerDependencies": {
     "typescript": "^5.9.2"

@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+progress {
+  border: revert;
+}
+
+button {
+  cursor: pointer;
+}
+
 .htmx-request {
   opacity: 0.5;
 }
@@ -47,7 +55,7 @@
   }
 
   pre {
-    background-color: #;
+    background-color: #f5f5f5;
     padding: 1rem;
     border-radius: 3px;
     overflow-x: auto;
