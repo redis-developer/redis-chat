@@ -57,14 +57,14 @@ button {
   }
 
   pre {
-    background-color: #f5f5f5;
+    background-color: #1e1e2e;
     padding: 1rem;
     border-radius: 3px;
     overflow-x: auto;
     font-size: 0.875rem;
 
     code {
-      background-color: #f5f5f5;
+      background-color: #1e1e2e;
       padding: 0.2rem 0.4rem;
       border-radius: 3px;
       font-family: "Courier New", Courier, monospace;
