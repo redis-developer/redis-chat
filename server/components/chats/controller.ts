@@ -8,6 +8,7 @@ import * as view from "./view";
 import { ShortTermMemoryModel, WorkingMemoryModel, Tools } from "../memory";
 import type { ShortTermMemory } from "../memory";
 import * as ai from "./ai";
+import { wait } from "../../utils/assert";
 
 async function getWorkingMemory(userId: string) {
   const redis = await getClient();
@@ -111,16 +112,22 @@ export async function newChatMessage(
 
     const stream = ai.answerPrompt(await chat.memories(), tools);
 
-    let content = "";
+    response.content = "";
 
     for await (const delta of stream) {
-      content += delta;
-      response.content = content;
-      const replacement = {
-        ...response,
-        replaceId: botChatId,
-      };
-      updateView(replacement);
+      const chunks = 20;
+
+      // Send updates in chunks characters
+      for (let i = 0; i < delta.length; i += chunks) {
+        response.content += delta.slice(i, i + chunks);
+        const replacement = {
+          ...response,
+          content: response.content + "<br><progress></progress>",
+          replaceId: botChatId,
+        };
+        updateView(replacement);
+        await wait(50);
+      }
     }
 
     await ai.storeMemories(message, response.content, tools);
