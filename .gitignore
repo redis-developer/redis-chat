@@ -30,5 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for commiting if needed)
 .env*
+.*.env
+*.env.yml
 !.env.example
 !.env.docker
