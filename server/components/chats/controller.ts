@@ -1,6 +1,5 @@
 import getClient from "../../redis";
 import { memoryClient } from "../../services/memory";
-import { UserId } from "agent-memory-client";
 import type { MemoryMessage } from "agent-memory-client";
 import { randomUlid } from "../../utils/uid";
 import logger from "../../utils/log";
@@ -8,10 +7,6 @@ import { ChatModel } from "../memory/chat";
 import { Tools } from "../memory/tools";
 import * as ai from "./ai";
 import { wait } from "../../utils/assert";
-
-function getTools(userId: string) {
-  return Tools.New(userId);
-}
 
 async function getChatModel(userId: string, chatId?: string) {
   const redis = await getClient();
@@ -77,56 +72,69 @@ export async function newChatMessage(
   const userMessage: MemoryMessage = {
     role: "user",
     content: message,
+    created_at: new Date().toISOString(),
   };
   messages.push(userMessage);
 
   updateView({ id: `user-${randomUlid()}`, content: message, role: "user" });
   updateView({ id: responseId, content: responseContent, role: "assistant" });
 
-  logger.info(`Searching for existing response in long-term memory.`, {
-    userId,
+  logger.info(`Fetching memory-enriched prompt context.`, { userId });
+
+  const memoryContext = await memoryClient.memoryPrompt({
+    query: message,
+    session: {
+      session_id: chatId,
+      user_id: userId,
+    },
+    long_term_search: {
+      text: message,
+      user_id: { eq: userId },
+      limit: 5,
+    },
   });
 
-  const searchResults = await memoryClient.searchLongTermMemory({
-    text: message,
-    userId: new UserId({ eq: userId }),
-    limit: 1,
-    distanceThreshold: 0.15,
-  });
+  const enrichedMessages = memoryContext.messages.map((message) => {
+    return {
+      role: message.role,
+      content: (message.content as { text: string }).text,
+    };
+  }) as MemoryMessage[];
 
-  if (searchResults.memories.length > 0) {
-    logger.info(`Found response in long-term memory`, { userId });
-    responseContent = searchResults.memories[0].text;
-  } else {
-    logger.info(`No response found in long-term memory`, { userId });
+  const tools = Tools.New(userId);
+  const stream = ai.answerPrompt(enrichedMessages, tools);
 
-    const tools = getTools(userId);
-    const stream = ai.answerPrompt(messages, tools);
+  responseContent = "";
 
-    responseContent = "";
+  for await (const delta of stream) {
+    const chunks = 20;
 
-    for await (const delta of stream) {
-      const chunks = 20;
-
-      for (let i = 0; i < delta.length; i += chunks) {
-        responseContent += delta.slice(i, i + chunks);
-        const replacement = {
-          id: responseId,
-          content: responseContent + "<br><progress></progress>",
-          replaceId: botChatId,
-          role: "assistant" as const,
-        };
-        updateView(replacement);
-        await wait(50);
-      }
+    for (let i = 0; i < delta.length; i += chunks) {
+      responseContent += delta.slice(i, i + chunks);
+      const replacement = {
+        id: responseId,
+        content: responseContent + "<br><progress></progress>",
+        replaceId: botChatId,
+        role: "assistant" as const,
+      };
+      updateView(replacement);
+      await wait(50);
     }
-
-    await ai.storeMemories(message, responseContent, tools);
   }
+
+  updateView({
+    id: responseId,
+    content: responseContent,
+    replaceId: botChatId,
+    role: "assistant",
+  });
+
+  await ai.storeMemories(message, responseContent, tools);
 
   const assistantMessage: MemoryMessage = {
     role: "assistant",
     content: responseContent,
+    created_at: new Date().toISOString(),
   };
   messages.push(assistantMessage);
 
@@ -137,13 +145,6 @@ export async function newChatMessage(
   );
 
   logger.debug(`Bot message stored for user \`${userId}\``, { userId });
-
-  updateView({
-    id: responseId,
-    content: responseContent,
-    replaceId: botChatId,
-    role: "assistant",
-  });
 
   return chatId;
 }

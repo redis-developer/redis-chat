@@ -33,7 +33,7 @@ const config = {
       process.env.OPENAI_EMBEDDINGS_DIMENSIONS ?? "1536",
       10,
     ),
-    LARGE_CHAT_MODEL: process.env.OPENAI_LARGE_CHAT_MODEL || "gpt-5",
+    LARGE_CHAT_MODEL: process.env.OPENAI_LARGE_CHAT_MODEL || "gpt-5.4",
     MEDIUM_CHAT_MODEL: process.env.OPENAI_MEDIUM_CHAT_MODEL || "gpt-5-mini",
     SMALL_CHAT_MODEL: process.env.OPENAI_SMALL_CHAT_MODEL || "gpt-5-nano",
   },
