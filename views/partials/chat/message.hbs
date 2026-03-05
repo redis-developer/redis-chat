@@ -3,7 +3,7 @@
 {{/unless}}
 {{#if (isEqual a=role b="user")}}
     <div id="entry-{{id}}" class="flex items-start self-end py-4 my-4">
-        <div class="bg-gray-700 text-gray-100 p-3 rounded-xl max-w-lg">{{content}}</div>
+        <div class="bg-dusk text-white p-3 rounded-xl max-w-lg border border-dusk-90">{{content}}</div>
     </div>
 {{else}}
     {{#if replaceId}}
@@ -12,7 +12,7 @@
     <div id="entry-{{id}}" class="flex flex-col self-start py-4 my-4">
     {{/if}}
         <div class="flex w-full">
-            <div class="markdown text-gray-100">{{#markdown md=content}}{{/markdown}}</div>
+            <div class="markdown text-dusk-10">{{#markdown md=content}}{{/markdown}}</div>
         </div>
     </div>
 {{/if}}

@@ -1,4 +1,52 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+
+@theme {
+  --font-primary: "Space Grotesk", sans-serif;
+  --font-secondary: "Space Mono", monospace;
+
+  --color-midnight: #091A23;
+  --color-primary: #FF4438;
+  --color-volt: #DCFF1E;
+
+  --color-hyper-04: #FD736A;
+  --color-hyper-05: #FF4438;
+  --color-hyper-06: #EB352A;
+  --color-hyper-07: #E4291E;
+  --color-hyper-08: #D1281E;
+  --color-hyper-09: #8A221C;
+  --color-hyper-10: #351D22;
+
+  --color-black-90: #191919;
+  --color-black-70: #4C4C4C;
+  --color-black-60: #6D6E71;
+  --color-black-50: #808080;
+  --color-black-30: #B2B2B2;
+  --color-black-10: #E5E5E5;
+
+  --color-grey-50: #F9FAFB;
+  --color-grey-20: #E9E9E9;
+  --color-grey-10: #FCFCFC;
+
+  --color-dusk: #163341;
+  --color-dusk-01: #F3F3F3;
+  --color-dusk-09: #0D212C;
+  --color-dusk-90: #2D4754;
+  --color-dusk-50: #8A99A0;
+  --color-dusk-30: #B9C2C6;
+  --color-dusk-10: #D9D9D9;
+}
+
+*,
+*::before,
+*::after {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-primary);
+}
 
 progress {
   border: revert;
@@ -12,25 +60,28 @@ button {
   opacity: 0.5;
 }
 
-/* Add markdown-specific styling here */
 .markdown {
   h1 {
     font-size: 2rem;
     margin-bottom: 0.5rem;
+    font-weight: 700;
   }
 
   h2 {
     font-size: 1.75rem;
     margin-bottom: 0.5rem;
+    font-weight: 700;
   }
 
   h3 {
     font-size: 1.5rem;
     margin-bottom: 0.5rem;
+    font-weight: 600;
   }
 
   p {
     margin-bottom: 1rem;
+    line-height: 160%;
   }
 
   ul,
@@ -44,32 +95,36 @@ button {
   }
 
   blockquote {
-    border-left: 4px solid #ccc;
+    border-left: 4px solid var(--color-dusk-50);
     padding-left: 1rem;
     margin: 1rem 0;
+    color: var(--color-dusk-30);
   }
 
   code {
-    background-color: #555;
+    font-family: var(--font-secondary);
+    background-color: var(--color-dusk-90);
     padding: 0.2rem 0.4rem;
     border-radius: 3px;
-    font-family: "Courier New", Courier, monospace;
+    font-size: 0.875rem;
   }
 
   pre {
-    background-color: #1e1e2e;
+    background-color: var(--color-dusk-09);
     padding: 1rem;
-    border-radius: 3px;
+    border-radius: 5px;
     overflow-x: auto;
     font-size: 0.875rem;
+    border: 1px solid var(--color-dusk);
 
     code {
-      background-color: #1e1e2e;
-      padding: 0.2rem 0.4rem;
-      border-radius: 3px;
-      font-family: "Courier New", Courier, monospace;
+      background-color: var(--color-dusk-09);
+      padding: 0;
+      border-radius: 0;
+      font-family: var(--font-secondary);
     }
   }
+
   img {
     max-width: 100%;
     height: auto;
@@ -83,38 +138,48 @@ button {
 
   th,
   td {
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-dusk);
     padding: 0.5rem;
   }
+
   th {
-    background-color: #f2f2f2;
+    background-color: var(--color-dusk-90);
   }
+
   a {
-    color: #1a0dab;
+    color: var(--color-hyper-04);
     text-decoration: none;
   }
+
   a:hover {
     text-decoration: underline;
+    color: var(--color-hyper-05);
   }
+
   hr {
     border: none;
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--color-dusk-50);
     margin: 1rem 0;
   }
+
   strong {
     font-weight: bold;
   }
-  rem {
+
+  em {
     font-style: italic;
   }
+
   small {
     font-size: 0.875rem;
-    color: #666;
+    color: var(--color-dusk-30);
   }
+
   sub {
     font-size: 0.75rem;
     vertical-align: sub;
   }
+
   sup {
     font-size: 0.75rem;
     vertical-align: super;

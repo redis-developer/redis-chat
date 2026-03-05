@@ -1,35 +1,38 @@
 {{!-- A sidebar that allows creating new threads and switching to past threads --}}
-<nav class="flex flex-col bg-gray-800 h-full w-64 border-r border-gray-700 p-4">
-  <h2 class="text-lg font-semibold mb-4 text-gray-100">Chat</h2>
+<nav class="flex flex-col bg-midnight h-full w-64 border-r border-dusk p-4">
+  <div class="flex items-center gap-2 mb-6">
+    <img src="/redis-logo.svg" alt="Redis" class="h-6" />
+    <span class="font-secondary text-xs tracking-widest text-dusk-30 uppercase">Chat</span>
+  </div>
   <ul class="my-2 list-none">
-    <li class="truncate cursor-pointer rounded hover:bg-gray-700 active:bg-gray-600">
+    <li class="truncate cursor-pointer rounded hover:bg-dusk-90 active:bg-dusk">
         <form ws-send hx-disabled-elt="this" class="block w-full">
             <input type="hidden" name="cmd" value="chats/new" />
-            <button type="submit" class="block w-full p-2 text-left text-gray-300">
+            <button type="submit" class="block w-full p-2 text-left text-dusk-30 hover:text-white font-medium text-sm">
             + New chat
             </button>
         </form>
     </li>
   </ul>
-  <p class="text-md text-gray-400 my-2">Chats</p>
+  <p class="font-secondary text-xs tracking-wider text-dusk-50 my-2 uppercase">Chats</p>
   <ul id="sidebarChats">
     {{> chat/sidebar/chats}}
   </ul>
   <div class="grow"></div>
-  <ul class="list-none">
-      <li class="text-xs text-gray-400 cursor-pointer">
+  <ul class="list-none border-t border-dusk pt-3">
+      <li class="cursor-pointer">
           <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
               <input type="hidden" name="cmd" value="users/new" />
-              <button type="submit" class="block w-full p-2 text-left text-gray-300 hover:bg-gray-700 active:bg-gray-600">
+              <button type="submit" class="block w-full p-2 text-left text-dusk-30 hover:text-white hover:bg-dusk-90 active:bg-dusk rounded text-xs">
                   + New user
               </button>
           </form>
       </li>
-      <li class="text-xs text-gray-400 cursor-pointer">
+      <li class="cursor-pointer">
           <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
               <input type="hidden" name="cmd" value="data/clear" />
-              <button type="submit" class="block w-full p-2 text-left text-red-300 hover:text-gray-300 active:text-gray-300 hover:bg-red-700 active:bg-red-600">
-                  🗑 Reset user
+              <button type="submit" class="block w-full p-2 text-left text-hyper-04 hover:text-white hover:bg-hyper-09 active:bg-hyper-10 rounded text-xs">
+                  Reset user
               </button>
           </form>
       </li>
