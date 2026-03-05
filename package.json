@@ -24,6 +24,7 @@
     "@ai-sdk/google-vertex": "^3.0.59",
     "@ai-sdk/openai": "^2.0.64",
     "@ai-sdk/rsc": "^1.0.89",
+    "agent-memory-client": "^0.3.1",
     "ai": "^5.0.89",
     "connect-redis": "^9.0.0",
     "dotenv": "^17.2.3",

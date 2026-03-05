@@ -1,10 +1,11 @@
 import { generateText, streamText, stepCountIs } from "ai";
-import type { AsyncIterableStream, Tool } from "ai";
+import type { AsyncIterableStream } from "ai";
+import type { MemoryMessage } from "agent-memory-client";
 import { llm } from "../../services/ai/ai";
-import type { ShortTermMemory, Tools } from "../../components/memory";
+import type { Tools } from "../memory/tools";
 
 export function answerPrompt(
-  messages: ShortTermMemory[],
+  messages: MemoryMessage[],
   tools: Tools,
 ): AsyncIterableStream<string> {
   const { searchTool } = tools.getTools();
@@ -29,7 +30,10 @@ export function answerPrompt(
             - If you don't obtain any information using the \`${searchTool.name}\` tool, or the \`${searchTool.name}\` tool returns nothing, answer the question to the best of your ability.
           `,
       },
-      ...messages,
+      ...messages.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+      })),
     ],
     tools: {
       [searchTool.name]: searchTool,

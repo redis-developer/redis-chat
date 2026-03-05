@@ -1,6 +1,8 @@
-import z from "zod";
+import { z } from "zod";
 import type { Tool } from "ai";
-import WorkingMemoryModel from "./working";
+import type { MemoryRecord } from "agent-memory-client";
+import { memoryClient } from "../../services/memory";
+import { UserId } from "agent-memory-client";
 import logger from "../../utils/log";
 
 export const searchToolInput = z.object({
@@ -16,12 +18,6 @@ export const addSemanticMemoryToolInput = z.object({
     .min(1)
     .describe(`The question to use to retrieve the memory later.`),
   answer: z.string().min(1).describe(`The answer to the question.`),
-  ttl: z
-    .number()
-    .optional()
-    .describe(
-      "If the question result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
-    ),
 });
 
 export const addLongTermMemoryToolInput = z.object({
@@ -37,51 +33,17 @@ export const addLongTermMemoryToolInput = z.object({
     .describe(
       `The answer to the question. Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
     ),
-  ttl: z
-    .number()
-    .optional()
-    .describe(
-      "If the question result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
-    ),
-});
-
-export const updateMemoryToolInput = z.object({
-  type: z
-    .enum(["long-term"])
-    .describe(
-      "For user-specific information that should be remembered over time, use 'long-term'. For general information that could apply to any user, use 'semantic'.",
-    ),
-  id: z.string().min(1).describe("The ID of the memory entry to update"),
-  question: z
-    .string()
-    .min(1)
-    .describe(
-      `The question to use to retrieve the memory later. Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
-    ),
-  answer: z
-    .string()
-    .min(1)
-    .describe(
-      `The answer to the question. Translate any user pronouns into the third person when searching in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
-    ),
-  ttl: z
-    .number()
-    .optional()
-    .describe(
-      "If the question result should be stored, what is the recommended time-to-live in seconds for the stored value? Use -1 to store forever.",
-    ),
 });
 
 export class Tools {
-  static New(workingMemoryModel: WorkingMemoryModel) {
-    return new Tools(workingMemoryModel);
+  static New(userId: string) {
+    return new Tools(userId);
   }
 
-  chatId: string;
-  workingMemoryModel: WorkingMemoryModel;
+  userId: string;
 
-  constructor(workingMemoryModel: WorkingMemoryModel) {
-    this.workingMemoryModel = workingMemoryModel;
+  constructor(userId: string) {
+    this.userId = userId;
   }
 
   getTools() {
@@ -99,7 +61,7 @@ export class Tools {
       name: "search_memory",
       execute: ({ query }) => {
         logger.info(`Searching memory for query: ${query}`, {
-          userId: this.workingMemoryModel.userId,
+          userId: this.userId,
         });
 
         return this.search(query);
@@ -111,14 +73,14 @@ export class Tools {
 
   getAddSemanticMemoryTool(): Tool & { name: string } {
     const addSemanticMemoryTool: Tool & { name: string } = Object.freeze({
-      description: `Add a new memory entry to semantic memory. Use this tool to store general facts and knowledge the applies to everyone.`,
+      description: `Add a new memory entry to semantic memory. Use this tool to store general facts and knowledge that applies to everyone.`,
       inputSchema: addSemanticMemoryToolInput,
       name: "add_semantic_memory",
-      execute: async ({ question, answer, ttl }) => {
+      execute: async ({ question, answer }) => {
         logger.info(`Adding "${question}" to semantic memory`, {
-          userId: this.workingMemoryModel.userId,
+          userId: this.userId,
         });
-        await this.addMemory("semantic", question, answer, ttl);
+        await this.addMemory("semantic", question, answer);
 
         return `Added memory for question: ${question}`;
       },
@@ -132,44 +94,47 @@ export class Tools {
       description: `Add a new memory entry to long-term memory. Use this to remember new information about the user. Translate any user pronouns into the third person when storing in memory, e.g., "I" becomes "the user", "my" becomes "the user's", etc.`,
       inputSchema: addLongTermMemoryToolInput,
       name: "add_long_term_memory",
-      execute: ({ question, answer, ttl }) => {
+      execute: ({ question, answer }) => {
         logger.info(`Adding "${question}" to long-term memory`, {
-          userId: this.workingMemoryModel.userId,
+          userId: this.userId,
           answer,
-          ttl,
         });
-        return this.addMemory("long-term", question, answer, ttl);
+        return this.addMemory("long-term", question, answer);
       },
     });
 
     return addMemoryTool;
   }
 
-  async search(query: string) {
-    const results = await this.workingMemoryModel.search(query);
+  async search(query: string): Promise<string> {
+    const results = await memoryClient.searchLongTermMemory({
+      text: query,
+      userId: new UserId({ eq: this.userId }),
+      limit: 5,
+    });
 
-    if (results.length === 0) {
+    if (results.memories.length === 0) {
       return "";
     }
 
-    const result = results[0];
-
-    return result.type === "episodic" ? result.summary : result.answer;
+    return results.memories[0].text;
   }
 
   async addMemory(
     type: "semantic" | "long-term",
     question: string,
     answer: string,
-    ttl?: number,
   ) {
-    if (type === "semantic") {
-      return this.workingMemoryModel.addSemanticMemory(question, answer, ttl);
-    } else if (type === "long-term") {
-      return this.workingMemoryModel.addLongTermMemory(question, answer, ttl);
-    } else {
-      throw new Error(`Unknown memory type: ${type}`);
-    }
+    const text = `Q: ${question}\nA: ${answer}`;
+
+    const record: MemoryRecord = {
+      id: crypto.randomUUID(),
+      text,
+      memory_type: "semantic" as MemoryRecord["memory_type"],
+      ...(type === "long-term" ? { user_id: this.userId } : {}),
+    };
+
+    await memoryClient.createLongTermMemory([record]);
   }
 }
 

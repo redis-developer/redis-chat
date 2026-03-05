@@ -1,22 +1,13 @@
-import { z } from "zod";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createVertex } from "@ai-sdk/google-vertex";
-import type { LanguageModelV2, EmbeddingModelV2 } from "@ai-sdk/provider";
-import { generateText, embed, stepCountIs } from "ai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import config from "../../config";
-import { Tools } from "../../components/memory";
-import type { ShortTermMemory } from "../../components/memory";
 
-/**
- * Returns the configured LLM based on the environment settings.
- */
 function getLlm() {
   let largeModel: LanguageModelV2 | null = null;
   let mediumModel: LanguageModelV2 | null = null;
   let smallModel: LanguageModelV2 | null = null;
-  let embeddings: EmbeddingModelV2<string> | null = null;
-  let dimensions: number | null = null;
 
   if (config.anthropic.API_KEY && config.anthropic.API_KEY.length > 0) {
     largeModel = createAnthropic({ apiKey: config.anthropic.API_KEY })(
@@ -35,8 +26,6 @@ function getLlm() {
       apiKey: config.openai.API_KEY,
     });
 
-    embeddings = embeddings ?? openai.embedding(config.openai.EMBEDDINGS_MODEL);
-    dimensions = dimensions ?? config.openai.EMBEDDINGS_DIMENSIONS;
     largeModel = largeModel ?? openai(config.openai.LARGE_CHAT_MODEL);
     mediumModel = mediumModel ?? openai(config.openai.MEDIUM_CHAT_MODEL);
     smallModel = smallModel ?? openai(config.openai.SMALL_CHAT_MODEL);
@@ -51,15 +40,12 @@ function getLlm() {
       },
     });
 
-    embeddings =
-      embeddings ?? vertex.textEmbeddingModel(config.google.EMBEDDINGS_MODEL);
-    dimensions = dimensions ?? config.google.EMBEDDINGS_DIMENSIONS;
     largeModel = largeModel ?? vertex(config.google.LARGE_CHAT_MODEL);
     mediumModel = mediumModel ?? vertex(config.google.MEDIUM_CHAT_MODEL);
     smallModel = smallModel ?? vertex(config.google.SMALL_CHAT_MODEL);
   }
 
-  if (!(largeModel && mediumModel && smallModel && embeddings && dimensions)) {
+  if (!(largeModel && mediumModel && smallModel)) {
     throw new Error(
       "No LLM configured. Please set the appropriate environment variables for Anthropic, OpenAI, or Google Vertex AI.",
     );
@@ -69,21 +55,7 @@ function getLlm() {
     largeModel,
     mediumModel,
     smallModel,
-    embeddings,
-    dimensions,
   };
-}
-
-/**
- * Generates an embedding for the provided text using the configured LLM embeddings model.
- */
-export async function embedText(text: string): Promise<number[]> {
-  const { embedding } = await embed({
-    model: llm.embeddings,
-    value: text,
-  });
-
-  return embedding;
 }
 
 export const llm = getLlm();

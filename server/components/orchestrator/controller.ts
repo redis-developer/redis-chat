@@ -1,22 +1,9 @@
 import logger from "../../utils/log";
-import { llm, embedText } from "../../services/ai/ai";
-import config from "../../config";
 import getClient from "../../redis";
-import { WorkingMemoryModel } from "../memory";
+import { memoryClient } from "../../services/memory";
 import { randomUlid } from "../../utils/uid";
 import { ctrl as chats } from "../chats";
 import * as view from "./view";
-
-async function getWorkingMemory(userId: string) {
-  const redis = await getClient();
-
-  return WorkingMemoryModel.New(redis, userId, {
-    createUid: randomUlid,
-    vectorDimensions: llm.dimensions,
-    embed: embedText,
-    ttl: config.redis.DEFAULT_TTL,
-  });
-}
 
 export async function removeEmptyChats(userId: string, chatId?: string) {
   try {
@@ -38,9 +25,6 @@ export async function removeEmptyChats(userId: string, chatId?: string) {
   }
 }
 
-/**
- * Clears all messages for a given user.
- */
 export async function clearChat(
   send: (message: string) => void,
   userId: string,
@@ -62,9 +46,6 @@ export async function clearChat(
   }
 }
 
-/**
- * Handles incoming chat messages from the client.
- */
 export async function newChatMessage(
   send: (message: string) => void,
   info: { userId: string; chatId?: string; message: string },
@@ -104,9 +85,6 @@ export async function newChatMessage(
   }
 }
 
-/**
- * Creates a new chat user.
- */
 export async function newChat(
   send: (message: string) => void,
   userId: string,
@@ -143,9 +121,6 @@ export async function newChat(
   }
 }
 
-/**
- * Switches the current chat user to a different chat.
- */
 export async function switchChat(
   send: (message: string) => void,
   userId: string,
@@ -163,19 +138,24 @@ export async function switchChat(
       }),
     );
 
-    const chat = await chats.getChatSession(userId, chatId);
-    const memories = await chat.memories();
+    const messages = await chats.getChatMessages(chatId, userId);
 
     send(view.clearMessages());
 
     send(
       view.renderInstructions({
-        instructions: memories.length === 0 ? "Ask anything" : "",
+        instructions: messages.length === 0 ? "Ask anything" : "",
       }),
     );
 
-    for (const memory of memories) {
-      send(view.renderMessage(memory));
+    for (const message of messages) {
+      send(
+        view.renderMessage({
+          id: message.id ?? `msg-${randomUlid()}`,
+          content: message.content,
+          role: message.role as "user" | "assistant",
+        }),
+      );
     }
   } catch (error) {
     logger.error(`Failed to switch chat for user \`${userId}\`:`, {
@@ -186,9 +166,6 @@ export async function switchChat(
   }
 }
 
-/**
- * Initializes the chat by sending all previous messages to the WebSocket client.
- */
 export async function initializeChat(
   send: (message: string) => void,
   userId: string,
@@ -222,9 +199,6 @@ export async function initializeChat(
   }
 }
 
-/**
- * Clears the entire store.
- */
 export async function clearMemory(
   send: (message: string) => void,
   userId: string,
@@ -235,6 +209,18 @@ export async function clearMemory(
     });
 
     const db = await getClient();
+
+    const allChats = await chats.getChatsWithTopMessage(userId);
+    await Promise.all(
+      allChats.map(async (chat) => {
+        try {
+          await memoryClient.deleteWorkingMemory(chat.chatId);
+        } catch {
+          // session may not exist in AMS
+        }
+      }),
+    );
+
     const allKeys = await db.keys(`users:u${userId}:*`);
 
     if (Array.isArray(allKeys) && allKeys.length > 0) {

@@ -12,6 +12,21 @@ services:
     volumes:
       - redis-data:/data
 
+  agent-memory-server:
+    container_name: agent-memory-server
+    image: redislabs/agent-memory-server
+    ports:
+      - 8000:8000
+    env_file:
+      - ./.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DISABLE_AUTH=true
+      - LONG_TERM_MEMORY=true
+      - ENABLE_DISCRETE_MEMORY_EXTRACTION=true
+    depends_on:
+      - redis
+
   server:
     container_name: server
     build: .
@@ -20,9 +35,12 @@ services:
     env_file:
       - ./.env
       - ./.env.docker
+    environment:
+      - AGENT_MEMORY_URL=http://agent-memory-server:8000
     restart: unless-stopped
     depends_on:
       - redis
+      - agent-memory-server
 
 volumes:
   redis-data:

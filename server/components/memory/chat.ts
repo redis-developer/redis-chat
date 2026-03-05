@@ -7,33 +7,21 @@ export interface ChatModelOptions {
   createUid?(): string;
 }
 
-export interface ChatMessage {
-  id: string;
-  role: "assistant" | "user";
-  content: string;
-  timestamp: number;
-}
-
-export type CreateMessage = Pick<ChatMessage, "role" | "content">;
-
 export interface ChatMetadata {
   userId: string;
   chatId: string;
-  summary: string;
-  lastSummarizedAt?: number;
+  lastMessage: string;
 }
 
-export interface Chat extends ChatMetadata {
-  messages: ChatMessage[];
-}
+export interface Chat extends ChatMetadata {}
 
 export class ChatModel {
   static Key(userId: string, chatId?: string) {
     if (!chatId) {
-      return `users:u${userId}:memory:conversations`;
+      return `users:u${userId}:chats`;
     }
 
-    return `users:u${userId}:memory:conversations:c${chatId}`;
+    return `users:u${userId}:chats:c${chatId}`;
   }
 
   static Index(userId: string) {
@@ -54,7 +42,7 @@ export class ChatModel {
       requiredOptions.createUid(),
       requiredOptions,
     );
-    await chat.initialize();
+    await chat.createIfNotExists();
     return chat;
   }
 
@@ -68,13 +56,9 @@ export class ChatModel {
         type: SCHEMA_FIELD_TYPE.TAG,
         AS: "chatId",
       },
-      "$.summary": {
+      "$.lastMessage": {
         type: SCHEMA_FIELD_TYPE.TEXT,
-        AS: "summary",
-      },
-      "$.lastSummarizedAt": {
-        type: SCHEMA_FIELD_TYPE.NUMERIC,
-        AS: "lastSummarizedAt",
+        AS: "lastMessage",
       },
     };
 
@@ -120,37 +104,18 @@ export class ChatModel {
     options?: ChatModelOptions,
   ): Promise<Chat[]> {
     await ChatModel.Initialize(db, userId);
-    options = ChatModel.DefaultOptions(options);
 
     const all = await db.ft.search(ChatModel.Index(userId), "*", {
-      RETURN: ["userId", "chatId", "summary", "lastSummarizedAt"],
+      RETURN: ["userId", "chatId", "lastMessage"],
     });
 
     if (all.total <= 0) {
       return [];
     }
 
-    return Promise.all(
-      all.documents.map(async ({ id, value }) => {
-        const dbChat = value as unknown as Omit<Chat, "messages">;
-        const model = await ChatModel.FromChatId(
-          db,
-          userId,
-          dbChat.chatId,
-          options,
-        );
-        const messages = [];
-        const top = await model.top();
-
-        if (top) {
-          messages.push(top);
-        }
-        return {
-          ...dbChat,
-          messages,
-        };
-      }),
-    );
+    return all.documents.map(({ value }) => {
+      return value as unknown as Chat;
+    });
   }
 
   private static DefaultOptions(
@@ -184,92 +149,22 @@ export class ChatModel {
     this.options = options;
   }
 
-  async initialize() {
-    await this.createIfNotExists();
-  }
-
   async metadata(): Promise<ChatMetadata> {
-    let summaries = (await this.db.json.get(this.chatKey, {
-      path: ["summary", "lastSummarizedAt"],
-    })) as null | { summary: string; lastSummarizedAt: number };
+    const data = (await this.db.json.get(this.chatKey)) as unknown as Chat | null;
 
     return {
       userId: this.userId,
       chatId: this.chatId,
-      summary: summaries?.summary ?? "",
-      lastSummarizedAt: summaries?.lastSummarizedAt ?? 0,
+      lastMessage: data?.lastMessage ?? "New chat",
     };
   }
 
-  async chat(): Promise<Chat> {
-    const chat: unknown = await this.db.json.get(this.chatKey);
-
-    return chat as Chat;
+  async updateLastMessage(message: string): Promise<void> {
+    await this.db.json.set(this.chatKey, "$.lastMessage", message);
   }
 
-  async length(): Promise<number> {
-    const lengths = await this.db.json.arrLen(this.chatKey, {
-      path: "$.messages",
-    });
-
-    if (Array.isArray(lengths)) {
-      return lengths[0] ?? 0;
-    }
-
-    return lengths;
-  }
-
-  async messages(): Promise<ChatMessage[]> {
-    const messages: unknown = await this.db.json.get(this.chatKey, {
-      path: "$.messages",
-    });
-
-    if (Array.isArray(messages)) {
-      if (Array.isArray(messages[0])) {
-        return messages[0] as ChatMessage[];
-      } else {
-        return messages as ChatMessage[];
-      }
-    }
-
-    return [];
-  }
-
-  async top(): Promise<ChatMessage | null> {
-    const length = await this.length();
-
-    if (length === 0) {
-      return null;
-    }
-
-    const last = (await this.db.json.get(this.chatKey, {
-      path: `$.messages[${length - 1}]`,
-    })) as unknown;
-
-    if (Array.isArray(last)) {
-      return last[0] as ChatMessage;
-    }
-
-    return last as ChatMessage | null;
-  }
-
-  async push(newMessage: CreateMessage): Promise<ChatMessage> {
-    const message = {
-      id: this.options.createUid(),
-      role: newMessage.role,
-      content: newMessage.content,
-      timestamp: Date.now(),
-    };
-
-    await this.db.json.arrAppend(this.chatKey, "$.messages", message);
-
-    return message;
-  }
-
-  async clear(): Promise<void> {
-    await this.db.json.clear(this.chatKey, {
-      path: "$.messages",
-    });
+  async remove(): Promise<void> {
+    await this.db.json.del(this.chatKey);
   }
 
   private async createIfNotExists(): Promise<Chat> {
@@ -279,9 +174,7 @@ export class ChatModel {
       : {
           userId: this.userId,
           chatId: this.chatId,
-          summary: "",
-          lastSummarizedAt: Date.now(),
-          messages: [],
+          lastMessage: "New chat",
         };
 
     if (!exists) {

@@ -1,57 +1,52 @@
-import { readStreamableValue } from "@ai-sdk/rsc";
 import getClient from "../../redis";
-import config from "../../config";
-import { llm, embedText } from "../../services/ai/ai";
+import { memoryClient } from "../../services/memory";
+import { UserId } from "agent-memory-client";
+import type { MemoryMessage } from "agent-memory-client";
 import { randomUlid } from "../../utils/uid";
 import logger from "../../utils/log";
-import * as view from "./view";
-import { ShortTermMemoryModel, WorkingMemoryModel, Tools } from "../memory";
-import type { ShortTermMemory } from "../memory";
+import { ChatModel } from "../memory/chat";
+import { Tools } from "../memory/tools";
 import * as ai from "./ai";
 import { wait } from "../../utils/assert";
 
-async function getWorkingMemory(userId: string) {
-  const redis = await getClient();
+function getTools(userId: string) {
+  return Tools.New(userId);
+}
 
-  return WorkingMemoryModel.New(redis, userId, {
+async function getChatModel(userId: string, chatId?: string) {
+  const redis = await getClient();
+  return ChatModel.FromChatId(redis, userId, chatId, {
     createUid: () => randomUlid(),
-    vectorDimensions: llm.dimensions,
-    embed: embedText,
-    ttl: config.redis.DEFAULT_TTL,
   });
 }
 
-async function getTools(userId: string) {
-  const workingMemory = await getWorkingMemory(userId);
-  return Tools.New(workingMemory);
+export async function getChatMessages(
+  chatId: string,
+  userId: string,
+): Promise<MemoryMessage[]> {
+  const wm = await memoryClient.getOrCreateWorkingMemory(chatId, { userId });
+  return wm.messages ?? [];
 }
 
 export async function getChatSession(userId: string, chatId?: string) {
-  const redis = await getClient();
-
-  return ShortTermMemoryModel.FromSessionId(redis, userId, chatId, {
-    createUid: () => randomUlid(),
-    ttl: config.redis.DEFAULT_TTL,
-  });
+  return getChatModel(userId, chatId);
 }
 
-/**
- * Clears all messages for a given user.
- */
 export async function clearChat(userId: string, chatId: string) {
-  const chat = await getChatSession(userId, chatId);
-  await chat.clear();
+  await memoryClient.deleteWorkingMemory(chatId);
+  await memoryClient.getOrCreateWorkingMemory(chatId, { userId });
 }
 
 export async function removeChat(userId: string, chatId: string) {
-  const chat = await getChatSession(userId, chatId);
-
-  chat.remove();
+  const chat = await getChatModel(userId, chatId);
+  await chat.remove();
+  try {
+    await memoryClient.deleteWorkingMemory(chatId);
+  } catch {
+    // session may not exist in AMS yet
+  }
 }
 
-/**
- * Handles incoming chat messages from the client.
- */
 export async function newChatMessage(
   updateView: (message: {
     replaceId?: string;
@@ -66,113 +61,112 @@ export async function newChatMessage(
     message,
   }: { botChatId: string; userId: string; chatId?: string; message: string },
 ): Promise<string> {
-  const workingMemory = await getWorkingMemory(userId);
-  const chat = await getChatSession(userId, chatId);
-  chatId = chat.sessionId;
-  let response: ShortTermMemory = {
-    id: botChatId,
-    role: "assistant",
-    content: "<progress></progress>",
-    timestamp: Date.now(),
-  };
-  logger.debug(`Processing message for user \`${userId}\``, {
+  const chat = await getChatModel(userId, chatId);
+  chatId = chat.chatId;
+
+  let responseContent = "<progress></progress>";
+  const responseId = botChatId;
+
+  logger.debug(`Processing message for user \`${userId}\``, { userId });
+
+  const existingWm = await memoryClient.getOrCreateWorkingMemory(chatId, {
     userId,
   });
+  const messages: MemoryMessage[] = existingWm.messages ?? [];
 
-  const userMessage = await chat.push({
+  const userMessage: MemoryMessage = {
     role: "user",
     content: message,
-  });
+  };
+  messages.push(userMessage);
 
-  logger.debug(`Message added for user \`${userId}\``, {
+  updateView({ id: `user-${randomUlid()}`, content: message, role: "user" });
+  updateView({ id: responseId, content: responseContent, role: "assistant" });
+
+  logger.info(`Searching for existing response in long-term memory.`, {
     userId,
   });
 
-  updateView(userMessage);
-
-  updateView(response);
-
-  logger.info(`Searching for existing response in semantic memory.`, {
-    userId,
+  const searchResults = await memoryClient.searchLongTermMemory({
+    text: message,
+    userId: new UserId({ eq: userId }),
+    limit: 1,
+    distanceThreshold: 0.15,
   });
 
-  const result = await workingMemory.searchSemanticMemory(message);
-
-  if (result.length > 0) {
-    logger.info(`Found response in semantic memory`, {
-      userId,
-    });
-    response.content = result[0].answer;
+  if (searchResults.memories.length > 0) {
+    logger.info(`Found response in long-term memory`, { userId });
+    responseContent = searchResults.memories[0].text;
   } else {
-    logger.info(`No response found in semantic memory`, {
-      userId,
-    });
+    logger.info(`No response found in long-term memory`, { userId });
 
-    const tools = await getTools(userId);
+    const tools = getTools(userId);
+    const stream = ai.answerPrompt(messages, tools);
 
-    const stream = ai.answerPrompt(await chat.memories(), tools);
-
-    response.content = "";
+    responseContent = "";
 
     for await (const delta of stream) {
       const chunks = 20;
 
-      // Send updates in chunks characters
       for (let i = 0; i < delta.length; i += chunks) {
-        response.content += delta.slice(i, i + chunks);
+        responseContent += delta.slice(i, i + chunks);
         const replacement = {
-          ...response,
-          content: response.content + "<br><progress></progress>",
+          id: responseId,
+          content: responseContent + "<br><progress></progress>",
           replaceId: botChatId,
+          role: "assistant" as const,
         };
         updateView(replacement);
         await wait(50);
       }
     }
 
-    await ai.storeMemories(message, response.content, tools);
+    await ai.storeMemories(message, responseContent, tools);
   }
 
-  response = await chat.push(response);
-
-  logger.debug(`Bot message added to stream for user \`${userId}\``, {
-    userId,
-  });
-
-  const replacement = {
-    ...response,
-    replaceId: botChatId,
+  const assistantMessage: MemoryMessage = {
+    role: "assistant",
+    content: responseContent,
   };
+  messages.push(assistantMessage);
 
-  updateView(replacement);
+  await memoryClient.putWorkingMemory(chatId, { messages });
+
+  await chat.updateLastMessage(
+    message.length > 80 ? message.substring(0, 80) + "..." : message,
+  );
+
+  logger.debug(`Bot message stored for user \`${userId}\``, { userId });
+
+  updateView({
+    id: responseId,
+    content: responseContent,
+    replaceId: botChatId,
+    role: "assistant",
+  });
 
   return chatId;
 }
 
 export async function getChatsWithTopMessage(userId: string) {
-  const existingChats = await ShortTermMemoryModel.AllSessions(
-    await getClient(),
-    userId,
-    {
-      createUid: () => randomUlid(),
-    },
-  );
+  const redis = await getClient();
+  const existingChats = await ChatModel.AllChats(redis, userId, {
+    createUid: () => randomUlid(),
+  });
 
   return existingChats.map((chat) => {
     return {
-      chatId: chat.sessionId,
-      length: chat.memories.length,
-      message: chat.memories[0]?.content ?? "New chat",
+      chatId: chat.chatId,
+      length: chat.lastMessage !== "New chat" ? 1 : 0,
+      message: chat.lastMessage,
     };
   });
 }
 
-/**
- * Creates a new chat user.
- */
 export async function newChat(userId: string): Promise<string> {
-  const newChat = await ShortTermMemoryModel.New(await getClient(), userId, {
+  const redis = await getClient();
+  const chat = await ChatModel.New(redis, userId, {
     createUid: () => randomUlid(),
   });
-  return newChat.sessionId;
+  return chat.chatId;
 }

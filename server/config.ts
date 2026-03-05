@@ -53,6 +53,9 @@ const config = {
       10,
     ),
   },
+  agentMemory: {
+    BASE_URL: process.env.AGENT_MEMORY_URL || "http://localhost:8000",
+  },
   redis: {
     URL: process.env.REDIS_URL || "redis://localhost:6379",
     DEFAULT_TTL: parseInt(process.env.REDIS_DEFAULT_TTL || "-1", 10), // in seconds, -1 = never expire
