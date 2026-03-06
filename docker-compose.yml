@@ -24,6 +24,8 @@ services:
       - DISABLE_AUTH=true
       - LONG_TERM_MEMORY=true
       - ENABLE_DISCRETE_MEMORY_EXTRACTION=true
+      - GENERATION_MODEL=gpt-5.2-chat-latest
+      - FAST_MODEL=gpt-5-mini
     depends_on:
       - redis
 
@@ -33,7 +35,6 @@ services:
     ports:
       - 8080:8080
     env_file:
-      - ./.env
       - ./.env.docker
     environment:
       - AGENT_MEMORY_URL=http://agent-memory-server:8000
