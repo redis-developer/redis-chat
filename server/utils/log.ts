@@ -1,11 +1,11 @@
 import { WebSocketServer } from "ws";
-import config from "../config";
-import getClient from "../redis";
+import config from "../config.js";
+import redis from "../redis.js";
 import { LEVEL, SPLAT, MESSAGE } from "triple-beam";
 import winston from "winston";
 import Transport from "winston-transport";
 import { format } from "logform";
-import { getSessionParser } from "./session";
+import { getSessionParser } from "./session.js";
 
 interface TransportInfo {
   level: string;
@@ -58,7 +58,6 @@ class RedisTransport extends Transport {
       let metaStr = typeof meta === "string" ? meta : JSON.stringify(meta);
 
       (async () => {
-        const redis = await getClient();
         // Don't await this so the app can keep moving.
         void redis.xAdd(config.log.LOG_STREAM, "*", {
           service: config.app.SERVICE_NAME,

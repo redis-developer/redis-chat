@@ -3,6 +3,7 @@ import "dotenv/config";
 const config = {
   env: {
     PROD: process.env.NODE_ENV === "production",
+    TEST: process.env.NODE_ENV === "test",
     DEV: process.env.NODE_ENV === "development",
     PORT: process.env.PORT || 8080,
   },

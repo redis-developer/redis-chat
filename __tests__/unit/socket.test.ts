@@ -7,7 +7,7 @@ const mockClearMemory = mock(() => Promise.resolve());
 const mockInitializeChat = mock(() => Promise.resolve("init-chat-id"));
 const mockClearChat = mock(() => Promise.resolve());
 
-mock.module("../../server/components/orchestrator/controller", () => ({
+mock.module("../../server/components/orchestrator/controller.js", () => ({
   newChatMessage: mockNewChatMessage,
   newChat: mockNewChat,
   switchChat: mockSwitchChat,
@@ -16,7 +16,7 @@ mock.module("../../server/components/orchestrator/controller", () => ({
   clearChat: mockClearChat,
 }));
 
-mock.module("../../server/utils/log", () => {
+mock.module("../../server/utils/log.js", () => {
   const warn = mock();
   const error = mock();
   const debug = mock();
@@ -28,8 +28,11 @@ mock.module("../../server/utils/log", () => {
   };
 });
 
-import { onMessage, initializeSocket } from "../../server/components/orchestrator/socket";
-import type { AppSession } from "../../server/components/orchestrator/socket";
+import {
+  onMessage,
+  initializeSocket,
+} from "../../server/components/orchestrator/socket.js";
+import type { AppSession } from "../../server/components/orchestrator/socket.js";
 
 function createMockSession(overrides?: Partial<AppSession>): AppSession {
   return {

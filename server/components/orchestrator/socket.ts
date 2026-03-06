@@ -1,10 +1,10 @@
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { Request } from "express";
-import logger, { logWst } from "../../utils/log";
+import logger, { logWst } from "../../utils/log.js";
 import expressSession from "express-session";
-import { getSessionParser } from "../../utils/session";
-import * as orchestrator from "./controller";
+import { getSessionParser } from "../../utils/session.js";
+import * as orchestrator from "./controller.js";
 
 export const wss = new WebSocketServer({ noServer: true });
 

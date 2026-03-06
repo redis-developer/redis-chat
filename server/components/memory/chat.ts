@@ -1,7 +1,7 @@
 import { SCHEMA_FIELD_TYPE } from "redis";
-import type { RediSearchSchema } from "redis";
-import type { RedisClient } from "../../redis";
-import { randomUlid } from "../../utils/uid";
+import type { RediSearchSchema, SearchReply } from "redis";
+import redis from "../../redis.js";
+import { randomUlid } from "../../utils/uid.js";
 
 export interface ChatModelOptions {
   createUid?(): string;
@@ -28,16 +28,11 @@ export class ChatModel {
     return `idx-${ChatModel.Key(userId).replace(/:/g, "-")}`;
   }
 
-  static async New(
-    db: RedisClient,
-    userId: string,
-    options?: ChatModelOptions,
-  ) {
+  static async New(userId: string, options?: ChatModelOptions) {
     const requiredOptions = ChatModel.DefaultOptions(options);
-    await ChatModel.Initialize(db, userId);
+    await ChatModel.Initialize(userId);
 
     const chat = new ChatModel(
-      db,
       userId,
       requiredOptions.createUid(),
       requiredOptions,
@@ -46,7 +41,7 @@ export class ChatModel {
     return chat;
   }
 
-  static async Initialize(db: RedisClient, userId: string) {
+  static async Initialize(userId: string) {
     const schema: RediSearchSchema = {
       "$.userId": {
         type: SCHEMA_FIELD_TYPE.TAG,
@@ -64,50 +59,48 @@ export class ChatModel {
 
     const chatKey = ChatModel.Key(userId);
     const index = ChatModel.Index(userId);
-    const keys = await db.ft._list();
+    const keys = await redis.ft._list();
 
     if (keys.includes(index)) {
       return;
     }
 
-    await db.ft.create(index, schema, {
+    await redis.ft.create(index, schema, {
       ON: "JSON",
       PREFIX: `${chatKey}:`,
     });
   }
 
   static async FromChatId(
-    db: RedisClient,
     userId: string,
     chatId?: string,
     options?: ChatModelOptions,
   ) {
-    await ChatModel.Initialize(db, userId);
+    await ChatModel.Initialize(userId);
 
     if (!chatId) {
-      return ChatModel.New(db, userId, options);
+      return ChatModel.New(userId, options);
     }
 
-    const exists = await db.exists(ChatModel.Key(userId, chatId));
+    const exists = await redis.exists(ChatModel.Key(userId, chatId));
     const requiredOptions = ChatModel.DefaultOptions(options);
 
     if (!exists) {
-      return ChatModel.New(db, userId, requiredOptions);
+      return ChatModel.New(userId, requiredOptions);
     }
 
-    return new ChatModel(db, userId, chatId, requiredOptions);
+    return new ChatModel(userId, chatId, requiredOptions);
   }
 
   static async AllChats(
-    db: RedisClient,
     userId: string,
     options?: ChatModelOptions,
   ): Promise<Chat[]> {
-    await ChatModel.Initialize(db, userId);
+    await ChatModel.Initialize(userId);
 
-    const all = await db.ft.search(ChatModel.Index(userId), "*", {
+    const all = (await redis.ft.search(ChatModel.Index(userId), "*", {
       RETURN: ["userId", "chatId", "lastMessage"],
-    });
+    })) as SearchReply;
 
     if (all.total <= 0) {
       return [];
@@ -130,19 +123,16 @@ export class ChatModel {
     );
   }
 
-  db: RedisClient;
   userId: string;
   chatId: string;
   chatKey: string;
   options: Required<ChatModelOptions>;
 
   constructor(
-    db: RedisClient,
     userId: string,
     chatId: string,
     options: Required<ChatModelOptions>,
   ) {
-    this.db = db;
     this.userId = userId;
     this.chatId = chatId;
     this.chatKey = ChatModel.Key(userId, chatId);
@@ -150,7 +140,7 @@ export class ChatModel {
   }
 
   async metadata(): Promise<ChatMetadata> {
-    const data = (await this.db.json.get(this.chatKey)) as unknown as Chat | null;
+    const data = (await redis.json.get(this.chatKey)) as unknown as Chat | null;
 
     return {
       userId: this.userId,
@@ -160,17 +150,17 @@ export class ChatModel {
   }
 
   async updateLastMessage(message: string): Promise<void> {
-    await this.db.json.set(this.chatKey, "$.lastMessage", message);
+    await redis.json.set(this.chatKey, "$.lastMessage", message);
   }
 
   async remove(): Promise<void> {
-    await this.db.json.del(this.chatKey);
+    await redis.json.del(this.chatKey);
   }
 
   private async createIfNotExists(): Promise<Chat> {
-    const exists = await this.db.exists(this.chatKey);
+    const exists = await redis.exists(this.chatKey);
     const chat: Chat = exists
-      ? ((await this.db.json.get(this.chatKey)) as unknown as Chat)
+      ? ((await redis.json.get(this.chatKey)) as unknown as Chat)
       : {
           userId: this.userId,
           chatId: this.chatId,
@@ -178,7 +168,7 @@ export class ChatModel {
         };
 
     if (!exists) {
-      await this.db.json.set(this.chatKey, "$", chat as any);
+      await redis.json.set(this.chatKey, "$", chat as any);
     }
 
     return chat;

@@ -1,9 +1,9 @@
-import config from "./config";
-import app from "./app";
-import logger, { logWss } from "./utils/log";
+import config from "./config.js";
+import app from "./app.js";
+import logger, { logWss } from "./utils/log.js";
 import { IncomingMessage } from "http";
 import { Duplex } from "stream";
-import { socket as orchestrator } from "./components/orchestrator";
+import { socket as orchestrator } from "./components/orchestrator/index.js";
 
 const port = config.env.PORT;
 

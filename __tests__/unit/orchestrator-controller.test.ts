@@ -7,7 +7,7 @@ const mockNewChatMessage = mock(() => Promise.resolve("chat-id"));
 const mockGetChatMessages = mock(() => Promise.resolve([]));
 const mockNewChatFn = mock(() => Promise.resolve("new-chat-id"));
 
-mock.module("../../server/components/chats", () => ({
+mock.module("../../server/components/chats/index.js", () => ({
   ctrl: {
     getChatsWithTopMessage: mockGetChatsWithTopMessage,
     removeChat: mockRemoveChat,
@@ -21,7 +21,7 @@ mock.module("../../server/components/chats", () => ({
 
 const mockDeleteWorkingMemory = mock(() => Promise.resolve({ status: "ok" }));
 
-mock.module("../../server/services/memory", () => ({
+mock.module("../../server/services/memory.js", () => ({
   memoryClient: {
     deleteWorkingMemory: mockDeleteWorkingMemory,
   },
@@ -30,19 +30,18 @@ mock.module("../../server/services/memory", () => ({
 const mockKeys = mock(() => Promise.resolve([]));
 const mockDel = mock(() => Promise.resolve(0));
 
-mock.module("../../server/redis", () => ({
-  default: () =>
-    Promise.resolve({
-      keys: mockKeys,
-      del: mockDel,
-    }),
+mock.module("../../server/redis.js", () => ({
+  default: {
+    keys: mockKeys,
+    del: mockDel,
+  },
 }));
 
-mock.module("../../server/utils/uid", () => ({
+mock.module("../../server/utils/uid.js", () => ({
   randomUlid: () => "test-ulid",
 }));
 
-mock.module("../../server/utils/log", () => ({
+mock.module("../../server/utils/log.js", () => ({
   default: {
     debug: mock(),
     info: mock(),
@@ -59,9 +58,9 @@ import {
   switchChat,
   initializeChat,
   clearMemory,
-} from "../../server/components/orchestrator/controller";
+} from "../../server/components/orchestrator/controller.js";
 
-describe("orchestrator/controller", () => {
+describe("orchestrator/controller.js", () => {
   const userId = "user-1";
   const chatId = "chat-1";
   const send = mock();
@@ -240,7 +239,10 @@ describe("orchestrator/controller", () => {
         { chatId: "c1", length: 1, message: "Hi" },
         { chatId: "c2", length: 1, message: "Hey" },
       ]);
-      mockKeys.mockResolvedValue(["users:uuser-1:chats:cc1", "users:uuser-1:chats:cc2"]);
+      mockKeys.mockResolvedValue([
+        "users:uuser-1:chats:cc1",
+        "users:uuser-1:chats:cc2",
+      ]);
 
       await clearMemory(send, userId);
 

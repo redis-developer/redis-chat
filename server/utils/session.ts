@@ -1,11 +1,11 @@
 import session from "express-session";
 import { RedisStore } from "connect-redis";
-import getClient from "../redis";
-import config from "../config";
+import redis from "../redis.js";
+import config from "../config.js";
 
 export async function getSessionParser() {
   const redisStore = new RedisStore({
-    client: await getClient(),
+    client: redis,
     prefix: config.redis.SESSION_PREFIX,
   });
 

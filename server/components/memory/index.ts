@@ -1,3 +1,3 @@
-export { ChatModel } from "./chat";
-export type { ChatModelOptions, ChatMetadata, Chat } from "./chat";
-export { Tools } from "./tools";
+export { ChatModel } from "./chat.js";
+export type { ChatModelOptions, ChatMetadata, Chat } from "./chat.js";
+export { Tools } from "./tools.js";

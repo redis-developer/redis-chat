@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createVertex } from "@ai-sdk/google-vertex";
 import type { LanguageModelV2 } from "@ai-sdk/provider";
-import config from "../../config";
+import config from "../../config.js";
 
 function getLlm() {
   let largeModel: LanguageModelV2 | null = null;

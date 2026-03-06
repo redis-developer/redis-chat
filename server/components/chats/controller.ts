@@ -1,16 +1,15 @@
-import getClient from "../../redis";
-import { memoryClient } from "../../services/memory";
+import redis from "../../redis.js";
+import { memoryClient } from "../../services/memory.js";
 import type { MemoryMessage } from "agent-memory-client";
-import { randomUlid } from "../../utils/uid";
-import logger from "../../utils/log";
-import { ChatModel } from "../memory/chat";
-import { Tools } from "../memory/tools";
-import * as ai from "./ai";
-import { wait } from "../../utils/assert";
+import { randomUlid } from "../../utils/uid.js";
+import logger from "../../utils/log.js";
+import { ChatModel } from "../memory/chat.js";
+import { Tools } from "../memory/tools.js";
+import * as ai from "./ai.js";
+import { wait } from "../../utils/assert.js";
 
 async function getChatModel(userId: string, chatId?: string) {
-  const redis = await getClient();
-  return ChatModel.FromChatId(redis, userId, chatId, {
+  return ChatModel.FromChatId(userId, chatId, {
     createUid: () => randomUlid(),
   });
 }
@@ -150,8 +149,7 @@ export async function newChatMessage(
 }
 
 export async function getChatsWithTopMessage(userId: string) {
-  const redis = await getClient();
-  const existingChats = await ChatModel.AllChats(redis, userId, {
+  const existingChats = await ChatModel.AllChats(userId, {
     createUid: () => randomUlid(),
   });
 
@@ -165,8 +163,7 @@ export async function getChatsWithTopMessage(userId: string) {
 }
 
 export async function newChat(userId: string): Promise<string> {
-  const redis = await getClient();
-  const chat = await ChatModel.New(redis, userId, {
+  const chat = await ChatModel.New(userId, {
     createUid: () => randomUlid(),
   });
   return chat.chatId;

@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { Tool } from "ai";
 import type { MemoryRecord } from "agent-memory-client";
-import { memoryClient } from "../../services/memory";
+import { memoryClient } from "../../services/memory.js";
 import { UserId } from "agent-memory-client";
-import logger from "../../utils/log";
+import logger from "../../utils/log.js";
 
 export const searchToolInput = z.object({
   query: z

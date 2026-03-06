@@ -1,9 +1,9 @@
-import logger from "../../utils/log";
-import getClient from "../../redis";
-import { memoryClient } from "../../services/memory";
-import { randomUlid } from "../../utils/uid";
-import { ctrl as chats } from "../chats";
-import * as view from "./view";
+import logger from "../../utils/log.js";
+import redis from "../../redis.js";
+import { memoryClient } from "../../services/memory.js";
+import { randomUlid } from "../../utils/uid.js";
+import { ctrl as chats } from "../chats/index.js";
+import * as view from "./view.js";
 
 export async function removeEmptyChats(userId: string, chatId?: string) {
   try {
@@ -208,8 +208,6 @@ export async function clearMemory(
       userId,
     });
 
-    const db = await getClient();
-
     const allChats = await chats.getChatsWithTopMessage(userId);
     await Promise.all(
       allChats.map(async (chat) => {
@@ -221,10 +219,10 @@ export async function clearMemory(
       }),
     );
 
-    const allKeys = await db.keys(`users:u${userId}:*`);
+    const allKeys = await redis.keys(`users:u${userId}:*`);
 
     if (Array.isArray(allKeys) && allKeys.length > 0) {
-      await db.del(allKeys);
+      await redis.del(allKeys);
     }
   } catch (error) {
     logger.error("Failed to clear memory:", {

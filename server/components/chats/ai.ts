@@ -1,8 +1,8 @@
 import { generateText, streamText, stepCountIs } from "ai";
 import type { AsyncIterableStream } from "ai";
 import type { MemoryMessage } from "agent-memory-client";
-import { llm } from "../../services/ai/ai";
-import type { Tools } from "../memory/tools";
+import { llm } from "../../services/ai/ai.js";
+import type { Tools } from "../memory/tools.js";
 
 export function answerPrompt(
   messages: MemoryMessage[],

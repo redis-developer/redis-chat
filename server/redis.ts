@@ -1,93 +1,16 @@
-import config from "./config";
-import { BasicClientSideCache, createClient } from "redis";
-import type {
-  RedisClientOptions,
-  RedisClientType,
-  RedisDefaultModules,
-} from "redis";
+import config from "./config.js";
+import { createClient } from "redis";
 
 if (!config.redis.URL) {
   console.error("REDIS_URL not set");
 }
 
-export type RedisClient = RedisClientType<RedisDefaultModules, {}, {}, 2, {}>;
-
-let clients: Record<string, Promise<RedisClient>> = {};
-let retries: Record<string, number> = {};
-
-async function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export default async function getClient(
-  options?: RedisClientOptions,
-): Promise<RedisClient> {
-  options = Object.assign(
-    {},
-    {
-      url: config.redis.URL,
-    },
-    options,
-  );
-
-  if (!options.url) {
-    throw new Error("You must pass a URL to connect");
-  }
-
-  const clientPromise = clients[options.url];
-
-  if (clientPromise) {
-    return clientPromise;
-  }
-
-  try {
-    const client = createClient(options) as RedisClient;
-
-    client.on("error", async (err) => {
-      const url = options.url ?? "";
-
-      if (config.env.PROD) {
-        console.error("Redis Client Error");
-        console.error(err);
-      }
-
-      try {
-        client.destroy();
-        await client.close();
-      } catch (err) {}
-
-      const clientRetries = retries[url] ?? 0;
-      retries[url] = clientRetries + 1;
-      try {
-        // Exponential backoff with jitter
-        await wait(2 ** ((clientRetries % 10) + 1) * 10);
-        await refreshClient(client);
-      } catch (e) {}
-    });
-
-    clients[options.url] = new Promise(async (resolve) => {
-      await client.connect();
-
-      resolve(client);
-    });
-
-    return clients[options.url];
-  } catch (err) {
-    console.error("Error creating Redis client:");
-    console.error(err);
-
-    throw err;
-  }
-}
-
-async function refreshClient(client: RedisClient) {
-  if (client) {
-    const options = client.options;
-
-    if (options?.url) {
-      delete clients[options?.url];
+const redis = await createClient({ url: config.redis.URL })
+  .on("error", (err) => {
+    if (!config.env.TEST) {
+      console.log("Redis Client Error", err);
     }
+  })
+  .connect();
 
-    await getClient(options);
-  }
-}
+export default redis;

@@ -3,7 +3,7 @@ import {
   renderMessage,
   clearMessages,
   renderChats,
-} from "../../server/components/chats/view";
+} from "../../server/components/chats/view.js";
 
 describe("chats/view", () => {
   describe("renderMessage", () => {
@@ -49,7 +49,7 @@ describe("chats/view", () => {
     });
 
     test("uses plaintext for unrecognized language", () => {
-      const content = '```foobar\nsome code\n```';
+      const content = "```foobar\nsome code\n```";
       const html = renderMessage({
         id: "code-2",
         content,

@@ -1,2 +1,2 @@
-export * as ctrl from "./controller";
-export * as view from "./view";
+export * as ctrl from "./controller.js";
+export * as view from "./view.js";

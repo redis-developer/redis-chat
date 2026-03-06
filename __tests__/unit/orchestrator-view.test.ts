@@ -4,7 +4,7 @@ import {
   renderMessage,
   clearMessages,
   renderChats,
-} from "../../server/components/orchestrator/view";
+} from "../../server/components/orchestrator/view.js";
 
 describe("orchestrator/view", () => {
   describe("renderInstructions", () => {
@@ -63,7 +63,7 @@ describe("orchestrator/view", () => {
     });
 
     test("highlights code blocks in content", () => {
-      const content = '```javascript\nconst x = 1;\n```';
+      const content = "```javascript\nconst x = 1;\n```";
       const html = renderMessage({
         id: "msg-4",
         content,
@@ -74,7 +74,7 @@ describe("orchestrator/view", () => {
     });
 
     test("treats unknown language as plaintext", () => {
-      const content = '```unknownlang\nsome code\n```';
+      const content = "```unknownlang\nsome code\n```";
       const html = renderMessage({
         id: "msg-5",
         content,

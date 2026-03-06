@@ -1,36 +1,20 @@
 import { describe, test, expect, mock, beforeAll, afterAll } from "bun:test";
-import { createClient } from "redis";
-import type { RedisClientType } from "redis";
+import "../../server/redis.js";
 
-mock.module("../../server/services/memory", () => ({
+mock.module("../../server/services/memory.js", () => ({
   memoryClient: {
-    getOrCreateWorkingMemory: mock(() =>
-      Promise.resolve({ messages: [] }),
-    ),
+    getOrCreateWorkingMemory: mock(() => Promise.resolve({ messages: [] })),
     putWorkingMemory: mock(() => Promise.resolve({})),
     deleteWorkingMemory: mock(() => Promise.resolve({ status: "ok" })),
     searchLongTermMemory: mock(() =>
       Promise.resolve({ memories: [], total: 0 }),
     ),
-    memoryPrompt: mock(() =>
-      Promise.resolve({ messages: [] }),
-    ),
+    memoryPrompt: mock(() => Promise.resolve({ messages: [] })),
   },
 }));
 
 import request from "supertest";
-import app from "../../server/app";
-
-let redis: RedisClientType;
-
-beforeAll(async () => {
-  redis = createClient({ url: "redis://localhost:6379" }) as RedisClientType;
-  await redis.connect();
-});
-
-afterAll(async () => {
-  await redis.quit();
-});
+import app from "../../server/app.js";
 
 describe("integration: Express app", () => {
   test("GET / returns 200 and renders HTML", async () => {
