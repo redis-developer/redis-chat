@@ -17,6 +17,9 @@
     "docker:redis": "docker compose down && docker compose up -d redis",
     "format": "prettier . --write",
     "start": "bun .",
+    "test": "bun test",
+    "test:unit": "bun test --filter '!integration'",
+    "test:integration": "bun test __tests__/integration",
     "ts": "bunx tsc"
   },
   "dependencies": {
