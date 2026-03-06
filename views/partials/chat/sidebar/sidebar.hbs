@@ -2,28 +2,28 @@
 <nav class="flex flex-col bg-midnight h-full w-64 border-r border-dusk p-4">
   <div class="flex items-center gap-2 mb-6">
     <img src="/redis-logo.svg" alt="Redis" class="h-6" />
-    <span class="font-secondary text-xs tracking-widest text-dusk-30 uppercase">Chat</span>
+    <span class="font-secondary text-xs tracking-widest text-dusk-50 uppercase">Chat</span>
   </div>
   <ul class="my-2 list-none">
-    <li class="truncate cursor-pointer rounded hover:bg-dusk-90 active:bg-dusk">
+    <li class="truncate cursor-pointer">
         <form ws-send hx-disabled-elt="this" class="block w-full">
             <input type="hidden" name="cmd" value="chats/new" />
-            <button type="submit" class="block w-full p-2 text-left text-dusk-30 hover:text-white font-medium text-sm">
+            <button type="submit" class="block w-full py-2 px-3 text-left text-white font-medium text-sm rounded-[5px] border border-dusk-90 bg-dusk hover:bg-dusk-90 transition-colors">
             + New chat
             </button>
         </form>
     </li>
   </ul>
-  <p class="font-secondary text-xs tracking-wider text-dusk-50 my-2 uppercase">Chats</p>
+  <p class="font-secondary text-xs tracking-wider text-dusk-50 my-4 uppercase">History</p>
   <ul id="sidebarChats">
     {{> chat/sidebar/chats}}
   </ul>
   <div class="grow"></div>
-  <ul class="list-none border-t border-dusk pt-3">
+  <ul class="list-none border-t border-dusk pt-3 flex flex-col gap-1">
       <li class="cursor-pointer">
           <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
               <input type="hidden" name="cmd" value="users/new" />
-              <button type="submit" class="block w-full p-2 text-left text-dusk-30 hover:text-white hover:bg-dusk-90 active:bg-dusk rounded text-xs">
+              <button type="submit" class="block w-full py-2 px-3 text-left text-dusk-30 hover:text-white hover:bg-dusk-90 active:bg-dusk rounded-[5px] text-sm font-medium transition-colors">
                   + New user
               </button>
           </form>
@@ -31,7 +31,7 @@
       <li class="cursor-pointer">
           <form ws-send hx-disabled-elt="this" hx-on:submit="setTimeout(location.reload.bind(location), 500)" class="block w-full">
               <input type="hidden" name="cmd" value="data/clear" />
-              <button type="submit" class="block w-full p-2 text-left text-hyper-04 hover:text-white hover:bg-hyper-09 active:bg-hyper-10 rounded text-xs">
+              <button type="submit" class="block w-full py-2 px-3 text-left text-hyper-04 hover:text-white hover:bg-hyper-09 active:bg-hyper-10 rounded-[5px] text-sm font-medium transition-colors">
                   Reset user
               </button>
           </form>

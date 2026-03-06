@@ -2,17 +2,17 @@
 <div hx-swap-oob="beforeend:#messages">
 {{/unless}}
 {{#if (isEqual a=role b="user")}}
-    <div id="entry-{{id}}" class="flex items-start self-end py-4 my-4">
-        <div class="bg-dusk text-white p-3 rounded-xl max-w-lg border border-dusk-90">{{content}}</div>
+    <div id="entry-{{id}}" class="flex items-start self-end py-3 my-2">
+        <div class="bg-dusk text-white p-3 rounded-xl max-w-lg border border-dusk-90 text-sm leading-relaxed">{{content}}</div>
     </div>
 {{else}}
     {{#if replaceId}}
-    <div id="entry-{{id}}" hx-swap-oob="outerHTML:#entry-{{replaceId}}" class="flex flex-col self-start py-4 my-4">
+    <div id="entry-{{id}}" hx-swap-oob="outerHTML:#entry-{{replaceId}}" class="flex flex-col self-start py-3 my-2">
     {{else}}
-    <div id="entry-{{id}}" class="flex flex-col self-start py-4 my-4">
+    <div id="entry-{{id}}" class="flex flex-col self-start py-3 my-2">
     {{/if}}
         <div class="flex w-full">
-            <div class="markdown text-dusk-10">{{#markdown md=content}}{{/markdown}}</div>
+            <div class="markdown text-dusk-10 text-sm leading-relaxed">{{#markdown md=content}}{{/markdown}}</div>
         </div>
     </div>
 {{/if}}

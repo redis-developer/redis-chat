@@ -1,10 +1,10 @@
-<ul hx-swap-oob="outerHTML:#sidebarChats" id="sidebarChats" class="my-2 list-none overflow-y-auto">
+<ul hx-swap-oob="outerHTML:#sidebarChats" id="sidebarChats" class="my-2 list-none overflow-y-auto flex flex-col gap-0.5">
   {{#each chats}}
-    <li class="truncate cursor-pointer rounded hover:bg-dusk-90 active:bg-dusk{{#ifEqual a=chatId b=../currentChatId}} bg-dusk{{/ifEqual}}">
+    <li class="truncate cursor-pointer rounded-[5px] hover:bg-dusk-90 active:bg-dusk transition-colors{{#ifEqual a=chatId b=../currentChatId}} bg-dusk{{/ifEqual}}">
       <form ws-send hx-disabled-elt="this" class="block w-full">
           <input type="hidden" name="cmd" value="chats/switch" />
           <input type="hidden" name="chatId" value="{{chatId}}" />
-          <button type="submit" class="block w-full text-xs p-2 text-left text-dusk-10">
+          <button type="submit" class="block w-full text-sm py-2 px-3 text-left text-dusk-30 hover:text-dusk-10 transition-colors">
               {{message}}
           </button>
       </form>

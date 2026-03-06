@@ -18,10 +18,10 @@ function toggleLogs() {
 function addLogEntry(level, message, meta) {
   const el = document.getElementById("logs");
   const colorClassMap = {
-    debug: "text-green-600",
-    info: "text-gray-600",
-    warn: "text-yellow-600",
-    error: "text-red-600",
+    debug: "text-volt",
+    info: "text-dusk-30",
+    warn: "text-volt-08",
+    error: "text-hyper-04",
   };
   const pre = document.createElement("pre");
   pre.classList.add("text-sm");
@@ -29,7 +29,7 @@ function addLogEntry(level, message, meta) {
   pre.classList.add("text-wrap");
   const levelSpan = document.createElement("span");
   levelSpan.classList.add("uppercase", "font-semibold");
-  levelSpan.classList.add(colorClassMap[level] ?? "text-gray-600");
+  levelSpan.classList.add(colorClassMap[level] ?? "text-dusk-30");
   levelSpan.textContent = `[${level.charAt(0)}] `;
   const messageSpan = document.createElement("span");
   messageSpan.textContent = message;

@@ -7,7 +7,6 @@
 
   --color-midnight: #091A23;
   --color-primary: #FF4438;
-  --color-volt: #DCFF1E;
 
   --color-hyper-04: #FD736A;
   --color-hyper-05: #FF4438;
@@ -27,6 +26,7 @@
   --color-grey-50: #F9FAFB;
   --color-grey-20: #E9E9E9;
   --color-grey-10: #FCFCFC;
+  --color-light-gray: #F8F8F8;
 
   --color-dusk: #163341;
   --color-dusk-01: #F3F3F3;
@@ -35,6 +35,19 @@
   --color-dusk-50: #8A99A0;
   --color-dusk-30: #B9C2C6;
   --color-dusk-10: #D9D9D9;
+
+  --color-volt: #DCFF1E;
+  --color-volt-06: #D0F41D;
+  --color-volt-07: #BFE112;
+  --color-volt-08: #A9CA03;
+  --color-volt-09: #8CAA00;
+  --color-volt-11: #4E5F02;
+  --color-volt-50: #F1FFA5;
+
+  --color-sky-blue: #80DBFF;
+  --color-sky-blue-09: #0477A5;
+
+  --shadow-short: 0 2px 8px 0 rgba(0, 0, 0, 0.25);
 }
 
 *,
@@ -84,10 +97,16 @@ button {
     line-height: 160%;
   }
 
-  ul,
+  ul {
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+    list-style-type: disc;
+  }
+
   ol {
     margin-bottom: 1rem;
     padding-left: 1.5rem;
+    list-style-type: decimal;
   }
 
   li {
