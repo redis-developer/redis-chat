@@ -4,7 +4,7 @@ import {
   renderMessage,
   clearMessages,
   renderChats,
-} from "../server/components/orchestrator/view";
+} from "../../server/components/orchestrator/view";
 
 describe("orchestrator/view", () => {
   describe("renderInstructions", () => {

@@ -46,8 +46,10 @@ export default async function getClient(
     client.on("error", async (err) => {
       const url = options.url ?? "";
 
-      console.error("Redis Client Error");
-      console.error(err);
+      if (config.env.PROD) {
+        console.error("Redis Client Error");
+        console.error(err);
+      }
 
       try {
         client.destroy();
@@ -59,9 +61,6 @@ export default async function getClient(
       try {
         // Exponential backoff with jitter
         await wait(2 ** ((clientRetries % 10) + 1) * 10);
-        console.log(
-          `${clientRetries} connection failures, reconnecting to Redis...`,
-        );
         await refreshClient(client);
       } catch (e) {}
     });

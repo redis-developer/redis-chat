@@ -3,7 +3,7 @@ import {
   renderMessage,
   clearMessages,
   renderChats,
-} from "../server/components/chats/view";
+} from "../../server/components/chats/view";
 
 describe("chats/view", () => {
   describe("renderMessage", () => {

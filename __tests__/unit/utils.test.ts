@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { wait } from "../server/utils/assert";
-import { randomUlid } from "../server/utils/uid";
+import { wait } from "../../server/utils/assert";
+import { randomUlid } from "../../server/utils/uid";
 
 describe("utils", () => {
   describe("wait", () => {

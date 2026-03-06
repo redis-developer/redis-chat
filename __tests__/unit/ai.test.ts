@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { llm } from "../server/services/ai/ai";
+import { llm } from "../../server/services/ai/ai";
 
 describe("services/ai", () => {
   test("llm export has largeModel, mediumModel, and smallModel", () => {

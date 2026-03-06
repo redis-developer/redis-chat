@@ -31,7 +31,7 @@ const mockCreateLongTermMemory = mock<
   (records: MemoryRecord[]) => Promise<void>
 >();
 
-mock.module("../server/services/memory", () => ({
+mock.module("../../server/services/memory", () => ({
   memoryClient: {
     searchLongTermMemory: mockSearchLongTermMemory,
     getOrCreateWorkingMemory: mockGetOrCreateWorkingMemory,
@@ -41,7 +41,7 @@ mock.module("../server/services/memory", () => ({
   },
 }));
 
-import { Tools } from "../server/components/memory/tools";
+import { Tools } from "../../server/components/memory/tools";
 
 describe("Tools", () => {
   const userId = "test-user-123";

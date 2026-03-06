@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { ChatModel } from "../server/components/memory/chat";
+import { ChatModel } from "../../server/components/memory/chat";
 
 function createMockDb() {
   return {

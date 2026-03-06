@@ -3,7 +3,6 @@
 public/styles.css
 __tests__
 .prettierignore
-bun.pretest.js
 compose.yml
 Dockerfile
 Makefile

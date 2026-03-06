@@ -7,7 +7,7 @@ const mockNewChatMessage = mock(() => Promise.resolve("chat-id"));
 const mockGetChatMessages = mock(() => Promise.resolve([]));
 const mockNewChatFn = mock(() => Promise.resolve("new-chat-id"));
 
-mock.module("../server/components/chats", () => ({
+mock.module("../../server/components/chats", () => ({
   ctrl: {
     getChatsWithTopMessage: mockGetChatsWithTopMessage,
     removeChat: mockRemoveChat,
@@ -21,7 +21,7 @@ mock.module("../server/components/chats", () => ({
 
 const mockDeleteWorkingMemory = mock(() => Promise.resolve({ status: "ok" }));
 
-mock.module("../server/services/memory", () => ({
+mock.module("../../server/services/memory", () => ({
   memoryClient: {
     deleteWorkingMemory: mockDeleteWorkingMemory,
   },
@@ -30,7 +30,7 @@ mock.module("../server/services/memory", () => ({
 const mockKeys = mock(() => Promise.resolve([]));
 const mockDel = mock(() => Promise.resolve(0));
 
-mock.module("../server/redis", () => ({
+mock.module("../../server/redis", () => ({
   default: () =>
     Promise.resolve({
       keys: mockKeys,
@@ -38,11 +38,11 @@ mock.module("../server/redis", () => ({
     }),
 }));
 
-mock.module("../server/utils/uid", () => ({
+mock.module("../../server/utils/uid", () => ({
   randomUlid: () => "test-ulid",
 }));
 
-mock.module("../server/utils/log", () => ({
+mock.module("../../server/utils/log", () => ({
   default: {
     debug: mock(),
     info: mock(),
@@ -59,7 +59,7 @@ import {
   switchChat,
   initializeChat,
   clearMemory,
-} from "../server/components/orchestrator/controller";
+} from "../../server/components/orchestrator/controller";
 
 describe("orchestrator/controller", () => {
   const userId = "user-1";
