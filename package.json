@@ -13,7 +13,7 @@
     "dev": "bun run dev.ts",
     "dev:server": "bun run --watch .",
     "dev:css": "bunx @tailwindcss/cli -i ./styles/styles.css -o ./public/styles.css --watch",
-    "docker": "docker compose down && docker compose up -d --build",
+    "docker": "docker compose down && docker compose up --env-file .env -d --build",
     "docker:redis": "docker compose down && docker compose up -d redis",
     "format": "prettier . --write",
     "start": "bun .",

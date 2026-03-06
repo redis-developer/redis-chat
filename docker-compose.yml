@@ -17,15 +17,14 @@ services:
     image: redislabs/agent-memory-server
     ports:
       - 8000:8000
-    env_file:
-      - ./.env
     environment:
-      - REDIS_URL=redis://redis:6379
-      - DISABLE_AUTH=true
-      - LONG_TERM_MEMORY=true
-      - ENABLE_DISCRETE_MEMORY_EXTRACTION=true
-      - GENERATION_MODEL=gpt-5.2-chat-latest
-      - FAST_MODEL=gpt-5-mini
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DISABLE_AUTH=${DISABLE_AUTH:-true}
+      - LONG_TERM_MEMORY=${LONG_TERM_MEMORY:-true}
+      - ENABLE_DISCRETE_MEMORY_EXTRACTION=${ENABLE_DISCRETE_MEMORY_EXTRACTION:-true}
+      - GENERATION_MODEL=${GENERATION_MODEL:-gpt-5.2-chat-latest}
+      - FAST_MODEL=${FAST_MODEL:-gpt-5-mini}
     depends_on:
       - redis
 
@@ -34,10 +33,11 @@ services:
     build: .
     ports:
       - 8080:8080
-    env_file:
-      - ./.env.docker
     environment:
-      - AGENT_MEMORY_URL=http://agent-memory-server:8000
+      - NODE_ENV=${NODE_ENV:-production}
+      - REDIS_DEFAULT_TTL=${REDIS_DEFAULT_TTL:-86400}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AGENT_MEMORY_URL=${AGENT_MEMORY_URL:-http://agent-memory-server:8000}
     restart: unless-stopped
     depends_on:
       - redis

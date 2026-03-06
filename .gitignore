@@ -35,4 +35,3 @@ yarn-error.log*
 .*.env
 *.env.yml
 !.env.example
-!.env.docker
